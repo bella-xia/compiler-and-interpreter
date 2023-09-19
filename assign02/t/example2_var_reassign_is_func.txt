@@ -1,0 +1,11 @@
+var a;
+
+a = 15;
+
+function a(x) {
+    x + 5;
+}
+
+a = q;
+
+a(10);

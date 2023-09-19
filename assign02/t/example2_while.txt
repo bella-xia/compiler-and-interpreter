@@ -1,0 +1,12 @@
+var a;
+var b;
+var c;
+a = 10;
+
+while (a) {
+    b = b - a * 1;
+    c = c + 1;
+    a = a - 2;
+}
+
+b / c;

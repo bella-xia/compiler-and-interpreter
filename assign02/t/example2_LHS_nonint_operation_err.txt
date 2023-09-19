@@ -1,0 +1,7 @@
+var a;
+
+function m(x) {
+    x;
+}
+
+m * a;

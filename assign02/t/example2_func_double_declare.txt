@@ -1,0 +1,12 @@
+function q(a, b) {
+    var b;
+    a = a + b;
+    a;
+}
+
+
+var a;
+var b;
+a = 34;
+b = 17;
+q(a, b);

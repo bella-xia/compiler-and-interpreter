@@ -1,0 +1,10 @@
+var a;
+var b;
+var c;
+a = b == c;
+if (c) {
+    b = 5;
+} else {
+    a = (b != c) + 10;
+}
+a + b + c;

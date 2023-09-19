@@ -1,0 +1,3 @@
+var a;
+a = readint();
+println(a + 15);

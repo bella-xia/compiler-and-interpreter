@@ -1,0 +1,25 @@
+var a;
+var b;
+var c;
+c = 1;
+a = b == c;
+if (c) {
+    b = 5;
+    if (a) {
+        a = 5;
+    } else {
+        a = 3;
+    }
+} else {
+    a = (b != c) + 10;
+}
+
+if (b) {
+    b = 10;
+    if (b) {
+        a = b - 2;
+    }
+} else {
+    b = 3 * c;
+}
+a + b + c;

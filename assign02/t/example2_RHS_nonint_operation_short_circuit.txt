@@ -1,0 +1,13 @@
+var a;
+
+
+function p(x) {
+    x;
+}
+
+
+println(a && p);
+
+a = 1;
+
+a || p;

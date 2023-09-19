@@ -1,0 +1,5 @@
+var a;
+var b;
+var c;
+
+(c && (a / b)) + 8 / 2;

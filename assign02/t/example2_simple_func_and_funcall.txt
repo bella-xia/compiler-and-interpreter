@@ -1,0 +1,10 @@
+function q(x) {
+    x + 3;
+}
+
+var a;
+var b;
+var c;
+b = 1;
+a = q + 1;
+a;

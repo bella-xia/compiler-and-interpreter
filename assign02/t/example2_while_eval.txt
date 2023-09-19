@@ -1,0 +1,8 @@
+var a;
+var b;
+var c;
+
+while (c < 10) {
+    c = c + 1;
+    b = a / c;
+}

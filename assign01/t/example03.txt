@@ -1,0 +1,10 @@
+var a;
+var b;
+var c;
+var d;
+var e;
+a = 11;
+b = a + 35 / 6;
+c = a / b + 76;
+d = b == a && b > a;
+e = (a * c < 55) && (d == 16 || b >= 9 + 13);

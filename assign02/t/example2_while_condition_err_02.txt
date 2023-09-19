@@ -1,0 +1,14 @@
+var a;
+var b;
+a = 5;
+
+function c(x) {
+    x;
+}
+
+while (a) {
+    b = b + 1;
+    if (b == 4) {
+        a = c;
+    }
+}

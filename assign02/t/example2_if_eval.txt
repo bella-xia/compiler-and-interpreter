@@ -1,0 +1,10 @@
+var a;
+var b;
+var c;
+
+if (c < 10) {
+    c = c + 1;
+    b = a / c;
+} else {
+    c = c / a;
+}

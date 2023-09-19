@@ -1,0 +1,20 @@
+var a;
+var b;
+var c;
+a = 1;
+b = 2;
+c = 3;
+
+function f() {
+    a = a + b;
+}
+
+function g() {
+    c = c - b - 1;
+}
+
+println(f() || g());
+println(c);
+
+println(g() && f());
+a;

@@ -1,0 +1,6 @@
+var a;
+var b;
+var c;
+c = 3;
+
+(c || (a / b)) * 8;
