@@ -24,4 +24,7 @@ depend :
 depend.mak :
 	touch $@
 
+solution.zip : 
+	zip -9r solution.zip *.h *.cpp Makefile README.txt
+
 include depend.mak

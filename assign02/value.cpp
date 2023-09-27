@@ -1,3 +1,4 @@
+#include <iostream>
 #include "cpputil.h"
 #include "exceptions.h"
 #include "valrep.h"
@@ -15,7 +16,7 @@ Value::Value(int ival)
 Value::Value(Function *fn)
     : m_kind(VALUE_FUNCTION), m_rep(fn)
 {
-  m_rep = fn;
+  // by creating a function, we are addinf one reference
   m_rep->add_ref();
 }
 
@@ -29,7 +30,8 @@ Value::Value(const Value &other)
 {
   if (other.is_atomic())
   {
-    *this = other;
+    m_kind = other.m_kind;
+    m_atomic = other.m_atomic;
   }
   else
   {
@@ -55,24 +57,34 @@ Value::~Value()
 
 Value &Value::operator=(const Value &rhs)
 {
-  if (this != &rhs &&
-      !(is_dynamic() && rhs.is_dynamic() && m_rep == rhs.m_rep))
+  if (is_dynamic())
   {
-    // TODO: handle reference counting (detach from previous ValRep, if any)
-    m_kind = rhs.m_kind;
-    if (is_dynamic())
+    // if it is dynamic, then remove the current reference
+    m_rep->remove_ref();
+    if (rhs.is_dynamic())
     {
-      // attach to rhs's dynamic representation
       m_rep = rhs.m_rep;
       m_rep->add_ref();
-      // TODO: handle reference counting (attach to the new ValRep)
     }
     else
     {
-      // copy rhs's atomic representation
+      m_rep = nullptr;
       m_atomic = rhs.m_atomic;
     }
   }
+  else
+  {
+    if (rhs.is_dynamic())
+    {
+      m_rep = rhs.m_rep;
+      m_rep->add_ref();
+    }
+    else
+    {
+      m_atomic = rhs.m_atomic;
+    }
+  }
+  m_kind = rhs.m_kind;
   return *this;
 }
 

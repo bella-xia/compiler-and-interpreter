@@ -3,8 +3,5 @@ function q(x) {
 }
 
 var a;
-var b;
-var c;
-b = 1;
-a = q + 1;
+a = q(1);
 a;

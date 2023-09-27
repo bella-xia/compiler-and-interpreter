@@ -308,10 +308,11 @@ Value Interpreter::if_flow_execute(Node *condition_ast, Environment *parent_env)
     // statement list under this new environment
     Environment if_env = Environment(parent_env);
     int nifkids = if_stmt_list->get_num_kids();
+    Value result;
 
     for (int i = 0; i < nifkids; ++i)
     {
-      statement_level_execute(if_stmt_list->get_kid(i), &if_env);
+      result = statement_level_execute(if_stmt_list->get_kid(i), &if_env);
     }
   }
   else if (nkids == 3)
@@ -323,9 +324,10 @@ Value Interpreter::if_flow_execute(Node *condition_ast, Environment *parent_env)
     assert(else_stmt_list->get_tag() == AST_STATEMENT_LIST);
     Environment else_env = Environment(parent_env);
     int nelsekids = else_stmt_list->get_num_kids();
+    Value result;
     for (int i = 0; i < nelsekids; ++i)
     {
-      statement_level_execute(else_stmt_list->get_kid(i), &else_env);
+      result = statement_level_execute(else_stmt_list->get_kid(i), &else_env);
     }
   }
   // conditional statement evaluates to 0
@@ -340,6 +342,7 @@ Value Interpreter::while_flow_execute(Node *condition_ast, Environment *parent_e
   Node *while_stmt_list = condition_ast->get_kid(1);
   assert(while_stmt_list->get_tag() == AST_STATEMENT_LIST);
   Value ident = low_level_execute(condition, parent_env);
+  Value result;
   if (ident.get_kind() != VALUE_INT)
   {
     EvaluationError::raise(condition->get_loc(), "the evaluation of the condition is not a numeric value");
@@ -353,7 +356,7 @@ Value Interpreter::while_flow_execute(Node *condition_ast, Environment *parent_e
     int nwhilekids = while_stmt_list->get_num_kids();
     for (int i = 0; i < nwhilekids; i++)
     {
-      statement_level_execute(while_stmt_list->get_kid(i), &while_env);
+      result = statement_level_execute(while_stmt_list->get_kid(i), &while_env);
     }
     // re-evaluate ident and ensure it is still numeric
     ident = low_level_execute(condition, parent_env);
@@ -423,8 +426,9 @@ Value Interpreter::low_level_execute_funcall(Node *funcall_ast, Environment *par
   }
   else if (val_kind == VALUE_FUNCTION)
   {
+    Environment *curr_env = func_val.get_function()->get_parent_env();
     // create new env for function call argument list
-    Environment arg_env = Environment(parent_env);
+    Environment arg_env = Environment(curr_env);
     Function *func = func_val.get_function();
     // find all the variables in the arglist and in the paramlist and match their values
     if (nkids == 2)
