@@ -1,0 +1,4 @@
+var a;
+a = mkarr(1, 2, 3);
+println(get(a, 0) + get(a, 1) + get(a, 2));
+a;

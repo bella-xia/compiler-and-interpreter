@@ -1,0 +1,5 @@
+"hello";
+"hello, world\n";
+"a\nb\tc\n\"foo\"";
+"A strong smell of petroleum prevails throughout";
+"foobarbaz";
