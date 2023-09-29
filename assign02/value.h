@@ -5,6 +5,8 @@
 #include <string>
 class ValRep;
 class Function;
+class Arr;
+class Str;
 
 enum ValueKind
 {
@@ -17,6 +19,8 @@ enum ValueKind
   // dynamic values: these have an associated dynamically-allocated
   // object (drived from ValRep)
   VALUE_FUNCTION,
+  VALUE_ARRAY,
+  VALUE_STRING,
   // could add other kinds of dynamic values here
 };
 
@@ -53,6 +57,8 @@ public:
   Value(enum ValueKind kind);
   Value(int ival = 0);
   Value(Function *fn);
+  Value(Arr *arr);
+  Value(Str *str);
   Value(IntrinsicFn intrinsic_fn);
   Value(const Value &other);
   ~Value();
@@ -78,6 +84,8 @@ public:
   }
 
   Function *get_function() const;
+  Arr *get_array();
+  Str *get_str();
 
   IntrinsicFn get_intrinsic_fn() const
   {
@@ -87,6 +95,8 @@ public:
 
   // convert to a string representation
   std::string as_str() const;
+  std::string print_arr() const;
+  std::string print_str() const;
 
   bool is_numeric() const { return m_kind == VALUE_INT; }
   bool is_dynamic() const { return m_kind >= VALUE_FUNCTION; }

@@ -32,6 +32,7 @@ enum ASTKind
   AST_STATEMENT_LIST,
   AST_FNCALL,
   AST_ARGUMENT_LIST,
+  AST_STRING_LITERAL
 };
 
 class ASTTreePrint : public TreePrint

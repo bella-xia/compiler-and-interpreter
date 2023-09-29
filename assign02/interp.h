@@ -43,6 +43,7 @@ private:
   Value low_level_execute_varref(Node *current_ast, Environment *env);
   Value low_level_execute_funcall(Node *funcall_ast, Environment *parent_env);
   Value low_level_execute_int_literal(Node *current_ast, Environment *env);
+  Value low_level_execute_str_literal(Node *current_ast, Environment *env);
   Value low_level_execute_operation(Node *current_ast, Environment *env);
   // TODO: private member functions
 
@@ -53,6 +54,33 @@ private:
                                  const Location &loc, Interpreter *interp);
   static Value intrinsic_readint(Value args[], unsigned num_args,
                                  const Location &loc, Interpreter *interp);
+
+  // instrinsic functions for ValRep Arr
+  static Value intrinsic_arr_mkarr(Value args[], unsigned num_args,
+                                   const Location &loc, Interpreter *interp);
+
+  static Value intrinsic_arr_len(Value args[], unsigned num_args,
+                                 const Location &loc, Interpreter *interp);
+  static Value intrinsic_arr_get(Value args[], unsigned num_args,
+                                 const Location &loc, Interpreter *interp);
+
+  static Value intrinsic_arr_set(Value args[], unsigned num_args,
+                                 const Location &loc, Interpreter *interp);
+
+  static Value intrinsic_arr_push(Value args[], unsigned num_args,
+                                  const Location &loc, Interpreter *interp);
+
+  static Value intrinsic_arr_pop(Value args[], unsigned num_args,
+                                 const Location &loc, Interpreter *interp);
+
+  static Value intrinsic_str_strlen(Value args[], unsigned num_args,
+                                    const Location &loc, Interpreter *interp);
+
+  static Value intrinsic_str_substr(Value args[], unsigned num_args,
+                                    const Location &loc, Interpreter *interp);
+
+  static Value intrinsic_str_strcat(Value args[], unsigned num_args,
+                                    const Location &loc, Interpreter *interp);
 };
 
 #endif // INTERP_H

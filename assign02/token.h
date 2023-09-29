@@ -32,7 +32,7 @@ enum TokenKind
   TOK_LBRACE,
   TOK_RBRACE,
   TOK_COMMA,
+  TOK_STRING_LITERAL
   // TODO: add members for additional kinds of tokens
 };
-
 #endif // TOKEN_H

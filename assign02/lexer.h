@@ -23,6 +23,7 @@ private:
   std::map<char, enum TokenKind> double_char_map;
   std::map<char, std::pair<enum TokenKind, enum TokenKind>> single_or_double_char_map;
   std::map<std::string, enum TokenKind> vars;
+  std::set<char> escape_char;
 
 public:
   Lexer(FILE *in, const std::string &filename);
@@ -51,6 +52,7 @@ private:
   Node *read_continued_token(enum TokenKind kind, const std::string &lexeme_start, int line, int col, int (*pred)(int));
   Node *read_dual_character_token(enum TokenKind kind, const std::string &lexeme_start, int line, int col, int desired_char);
   Node *read_single_or_dual_character_token(enum TokenKind kind, enum TokenKind altkind, const std::string &lexeme_start, int line, int col, int desired_char);
+  Node *read_string_literal(const std::string &lexeme_start, int line, int col);
   // TODO: add additional member functions if necessary
 };
 

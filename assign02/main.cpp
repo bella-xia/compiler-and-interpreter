@@ -41,7 +41,6 @@ int execute(int argc, char **argv)
 
   FILE *in;
   const char *filename;
-
   if (optind < argc)
   {
     // read input from file

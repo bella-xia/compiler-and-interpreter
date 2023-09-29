@@ -34,7 +34,8 @@ Lexer::Lexer(FILE *in, const std::string &filename)
             {"function", TOK_FUNC},
             {"if", TOK_IF},
             {"else", TOK_ELSE},
-            {"while", TOK_WHILE}})
+            {"while", TOK_WHILE}}),
+      escape_char({'\"', '\n', '\r', '\t'})
 {
 }
 
@@ -209,6 +210,8 @@ Node *Lexer::read_token()
       altkind = token_pair.second;
       return read_single_or_dual_character_token(kind, altkind, lexeme, line, col, char('='));
     // TODO: add cases for other kinds of tokens
+    case '"':
+      return read_string_literal("", line, col);
     default:
       SyntaxError::raise(get_current_loc(), "Unrecognized character '%c'", c);
     }
@@ -286,4 +289,32 @@ Node *Lexer::read_single_or_dual_character_token(enum TokenKind kind, enum Token
     unread(c);
   }
   return token_create(kind, lexeme, line, col);
+}
+
+Node *Lexer::read_string_literal(const std::string &lexeme_start, int line, int col)
+{
+  std::string lexeme(lexeme_start);
+  bool inner_quote = false;
+  for (;;)
+  {
+    int c = read();
+    if (c >= 0)
+    {
+      if (c == '"' && !inner_quote)
+      {
+        return token_create(TOK_STRING_LITERAL, lexeme, line, col);
+      }
+      if (inner_quote && (c != '"' && c != 'n' && c != 'r' && c != 't'))
+      {
+        SyntaxError::raise(get_current_loc(), "Unrecognized escape sequence '\\%c'", c);
+      }
+      // token has finished
+      lexeme.push_back(char(c));
+      inner_quote = ((int)c == 92) ? true : false;
+    }
+    else
+    {
+      SyntaxError::raise(get_current_loc(), "Unexpected end of input");
+    }
+  }
 }

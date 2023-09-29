@@ -433,6 +433,7 @@ Node *Parser2::parse_F()
 {
   // F -> ^ number
   // F -> ^ ident
+  // F -> ^ string
   // F -> ^ ( A )
   // F →  ident ( OptArgList )
 
@@ -442,18 +443,26 @@ Node *Parser2::parse_F()
     error_at_current_loc("Unexpected end of input looking for primary expression");
   }
   int tag = next_tok->get_tag();
-  if (tag == TOK_INTEGER_LITERAL || tag == TOK_IDENTIFIER)
+  if (tag == TOK_INTEGER_LITERAL || tag == TOK_STRING_LITERAL)
   {
     // F -> ^ number
-    // F -> ^ ident
-    // F →  ident ( OptArgList )
+    // F -> ^ string
     std::unique_ptr<Node> tok(expect(static_cast<enum TokenKind>(tag)));
-    int ast_tag = tag == TOK_INTEGER_LITERAL ? AST_INT_LITERAL : AST_VARREF;
+    int ast_tag = tag == TOK_INTEGER_LITERAL ? AST_INT_LITERAL : AST_STRING_LITERAL;
+    std::unique_ptr<Node> ast(new Node(ast_tag));
+    ast->set_str(tok->get_str());
+    ast->set_loc(tok->get_loc());
+    return ast.release();
+  }
+  else if (tag == TOK_IDENTIFIER)
+  {
+    std::unique_ptr<Node> tok(expect(static_cast<enum TokenKind>(tag)));
+    int ast_tag = AST_VARREF;
     std::unique_ptr<Node> ast(new Node(ast_tag));
     ast->set_str(tok->get_str());
     ast->set_loc(tok->get_loc());
     Node *next_next_tok = m_lexer->peek();
-    if (tag == TOK_IDENTIFIER && next_next_tok != nullptr && next_next_tok->get_tag() == TOK_LPAREN)
+    if (next_next_tok != nullptr && next_next_tok->get_tag() == TOK_LPAREN)
     {
       // F →  ident ( OptArgList )
       std::unique_ptr<Node> fncall(new Node(AST_FNCALL));
@@ -463,7 +472,6 @@ Node *Parser2::parse_F()
       expect_and_discard(TOK_RPAREN);
       return fncall.release();
     }
-    // F -> ^ number
     // F -> ^ ident
     return ast.release();
   }

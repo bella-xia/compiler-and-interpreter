@@ -8,13 +8,24 @@
 #include "node.h"
 #include "exceptions.h"
 #include "function.h"
+#include "arr.h"
+#include "str.h"
 #include "interp.h"
 #include "environment.h"
 
 Interpreter::Interpreter(Node *ast_to_adopt)
     : m_ast(ast_to_adopt), defined_var({}), intrinsic_funcs({{"print", &intrinsic_print},
                                                              {"println", &intrinsic_println},
-                                                             {"readint", &intrinsic_readint}})
+                                                             {"readint", &intrinsic_readint},
+                                                             {"mkarr", &intrinsic_arr_mkarr},
+                                                             {"len", &intrinsic_arr_len},
+                                                             {"get", &intrinsic_arr_get},
+                                                             {"set", &intrinsic_arr_set},
+                                                             {"push", &intrinsic_arr_push},
+                                                             {"pop", &intrinsic_arr_pop},
+                                                             {"strlen", &intrinsic_str_strlen},
+                                                             {"strcat", &intrinsic_str_strcat},
+                                                             {"substr", &intrinsic_str_substr}})
 {
 }
 
@@ -382,6 +393,8 @@ Value Interpreter::low_level_execute(Node *current_ast, Environment *env)
     return low_level_execute_varref(current_ast, env);
   case AST_INT_LITERAL:
     return low_level_execute_int_literal(current_ast, env);
+  case AST_STRING_LITERAL:
+    return low_level_execute_str_literal(current_ast, env);
   case AST_FNCALL:
     return low_level_execute_funcall(current_ast, env);
   default:
@@ -498,6 +511,14 @@ Value Interpreter::low_level_execute_int_literal(Node *current_ast, Environment 
   return Value(std::stoi(current_ast->get_str()));
 }
 
+Value Interpreter::low_level_execute_str_literal(Node *current_ast, Environment *env)
+{
+  int nkids = current_ast->get_num_kids();
+  assert(nkids == 0);
+  std::string *str_actual = new std::string(current_ast->get_str());
+  return Value(new Str(str_actual));
+}
+
 Value Interpreter::low_level_execute_varref(Node *current_ast, Environment *env)
 {
   int nkids = current_ast->get_num_kids();
@@ -594,4 +615,141 @@ Value Interpreter::intrinsic_readint(Value args[], unsigned num_args,
   int a;
   std::scanf("%d", &a);
   return Value(a);
+}
+
+Value Interpreter::intrinsic_arr_mkarr(Value args[], unsigned num_args,
+                                       const Location &loc, Interpreter *interp)
+{
+  std::vector<Value> *arr = new std::vector<Value>();
+  for (unsigned i = 0; i < num_args; ++i)
+  {
+    if (args[i].get_kind() != VALUE_INT && args[i].get_kind() != VALUE_ARRAY)
+    {
+      EvaluationError::raise(loc, "Not an integer or an array, cannot be used in array");
+    }
+    arr->push_back(args[i]);
+  }
+  Arr *array = new Arr(arr);
+  return Value(array);
+}
+
+Value Interpreter::intrinsic_arr_len(Value args[], unsigned num_args,
+                                     const Location &loc, Interpreter *interp)
+{
+  if (num_args != 1)
+    EvaluationError::raise(loc, "Wrong number of arguments passed to len function");
+  Value arr_val = args[0];
+  if (arr_val.get_kind() != VALUE_ARRAY)
+    EvaluationError::raise(loc, "len function encounters a non-array parameter");
+  return arr_val.get_array()->get_len();
+}
+
+Value Interpreter::intrinsic_arr_get(Value args[], unsigned num_args,
+                                     const Location &loc, Interpreter *interp)
+{
+  if (num_args != 2)
+    EvaluationError::raise(loc, "Wrong number of arguments passed to get function");
+  Value arr_val = args[0];
+  if (arr_val.get_kind() != VALUE_ARRAY)
+    EvaluationError::raise(loc, "getter function encounters a non-array parameter");
+  Value idx = args[1];
+  if (idx.get_kind() != VALUE_INT)
+    EvaluationError::raise(loc, "arrays only have interger index");
+  return arr_val.get_array()->get_idx(idx.get_ival());
+}
+
+Value Interpreter::intrinsic_arr_set(Value args[], unsigned num_args,
+                                     const Location &loc, Interpreter *interp)
+{
+  if (num_args != 3)
+    EvaluationError::raise(loc, "Wrong number of arguments passed to set function");
+  Value arr_val = args[0];
+  if (arr_val.get_kind() != VALUE_ARRAY)
+    EvaluationError::raise(loc, "setter function encounters a non-array parameter");
+  Value idx = args[1];
+  if (idx.get_kind() != VALUE_INT)
+    EvaluationError::raise(loc, "arrays only have interger index");
+  Value setter_val = args[2];
+  if (setter_val.get_kind() != VALUE_INT && setter_val.get_kind() != VALUE_ARRAY)
+    EvaluationError::raise(loc, "arrays can only store integers");
+  return arr_val.get_array()->set(idx.get_ival(), setter_val);
+}
+
+Value Interpreter::intrinsic_arr_push(Value args[], unsigned num_args,
+                                      const Location &loc, Interpreter *interp)
+{
+  if (num_args != 2)
+    EvaluationError::raise(loc, "Wrong number of arguments passed to push function");
+  Value arr_val = args[0];
+  if (arr_val.get_kind() != VALUE_ARRAY)
+    EvaluationError::raise(loc, "push function encounters a non-array parameter");
+  Value push_val = args[1];
+  if (push_val.get_kind() != VALUE_INT && push_val.get_kind() != VALUE_ARRAY)
+    EvaluationError::raise(loc, "arrays can only store integers");
+  arr_val.get_array()->push(push_val);
+  return Value();
+}
+
+Value Interpreter::intrinsic_arr_pop(Value args[], unsigned num_args,
+                                     const Location &loc, Interpreter *interp)
+{
+  if (num_args != 1)
+    EvaluationError::raise(loc, "Wrong number of arguments passed to pop function");
+  Value arr_val = args[0];
+  if (arr_val.get_kind() != VALUE_ARRAY)
+    EvaluationError::raise(loc, "pop function encounters a non-array parameter");
+  Value result = arr_val.get_array()->pop();
+  if (result.is_invalid())
+  {
+    EvaluationError::raise(loc, "there is no more element in the array to be poped");
+  }
+  return result;
+}
+
+Value Interpreter::intrinsic_str_strlen(Value args[], unsigned num_args,
+                                        const Location &loc, Interpreter *interp)
+{
+  if (num_args != 1)
+  {
+    EvaluationError::raise(loc, "Wrong number of arguments passed to strlen function");
+  }
+  Value str_val = args[0];
+  if (str_val.get_kind() != VALUE_STRING)
+  {
+    EvaluationError::raise(loc, "strlen function encounters a non-string parameter");
+  }
+  return Value(str_val.get_str()->get_len());
+}
+
+Value Interpreter::intrinsic_str_substr(Value args[], unsigned num_args,
+                                        const Location &loc, Interpreter *interp)
+{
+  if (num_args != 3)
+  {
+    EvaluationError::raise(loc, "Wrong number of arguments passed to substr function");
+  }
+  Value str_val = args[0];
+  Value start_idx = args[1];
+  Value str_len = args[2];
+  if (str_val.get_kind() != VALUE_STRING || start_idx.get_kind() != VALUE_INT || str_len.get_kind() != VALUE_INT)
+  {
+    EvaluationError::raise(loc, "parameter type does not fit the standard of substr function");
+  }
+  return Value(str_val.get_str()->get_substr(start_idx.get_ival(), str_len.get_ival()));
+}
+
+Value Interpreter::intrinsic_str_strcat(Value args[], unsigned num_args,
+                                        const Location &loc, Interpreter *interp)
+{
+  if (num_args != 2)
+  {
+    EvaluationError::raise(loc, "Wrong number of arguments passed to strcat function");
+  }
+  Value str_val1 = args[0];
+  Value str_val2 = args[1];
+  if (str_val1.get_kind() != VALUE_STRING || str_val2.get_kind() != VALUE_STRING)
+  {
+    EvaluationError::raise(loc, "strcat function encounters a non-string parameter");
+  }
+  return Value(str_val1.get_str()->get_strcat(str_val2.get_str()));
 }
