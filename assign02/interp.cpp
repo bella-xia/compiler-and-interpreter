@@ -14,24 +14,28 @@
 #include "environment.h"
 
 Interpreter::Interpreter(Node *ast_to_adopt)
-    : m_ast(ast_to_adopt), defined_var({}), intrinsic_funcs({{"print", &intrinsic_print},
-                                                             {"println", &intrinsic_println},
-                                                             {"readint", &intrinsic_readint},
-                                                             {"mkarr", &intrinsic_arr_mkarr},
-                                                             {"len", &intrinsic_arr_len},
-                                                             {"get", &intrinsic_arr_get},
-                                                             {"set", &intrinsic_arr_set},
-                                                             {"push", &intrinsic_arr_push},
-                                                             {"pop", &intrinsic_arr_pop},
-                                                             {"strlen", &intrinsic_str_strlen},
-                                                             {"strcat", &intrinsic_str_strcat},
-                                                             {"substr", &intrinsic_str_substr}})
+    : m_ast(ast_to_adopt), intrinsic_funcs({{"print", &intrinsic_print},
+                                            {"println", &intrinsic_println},
+                                            {"readint", &intrinsic_readint},
+                                            {"mkarr", &intrinsic_arr_mkarr},
+                                            {"len", &intrinsic_arr_len},
+                                            {"get", &intrinsic_arr_get},
+                                            {"set", &intrinsic_arr_set},
+                                            {"push", &intrinsic_arr_push},
+                                            {"pop", &intrinsic_arr_pop},
+                                            {"strlen", &intrinsic_str_strlen},
+                                            {"strcat", &intrinsic_str_strcat},
+                                            {"substr", &intrinsic_str_substr}}),
+      global_env(new Environment())
 {
+  global_env->add_ref();
+  preinstall_intrinsic_funcs(global_env);
 }
 
 Interpreter::~Interpreter()
 {
   delete m_ast;
+  delete global_env;
 }
 
 void Interpreter::preinstall_intrinsic_funcs(Environment *global_env)
@@ -51,15 +55,11 @@ void Interpreter::analyze()
 {
   // pass into hierachical analysis
   unit_level_analyze(m_ast);
+  delete global_env;
 }
 
 void Interpreter::unit_level_analyze(Node *unit_ast)
 {
-  // initiate global environment
-  Environment env = Environment();
-  // preinstall intrinsic functions
-  preinstall_intrinsic_funcs(&env);
-
   // iterate over all kids of the global env, determine whether it is a statement
   // or a function and pass into the corresponding analysis
   int nkids = unit_ast->get_num_kids();
@@ -68,37 +68,46 @@ void Interpreter::unit_level_analyze(Node *unit_ast)
     Node *child = unit_ast->get_kid(i);
     if (child->get_tag() == AST_STATEMENT)
     {
-      statement_level_analyze(child, &env);
+      statement_level_analyze(child, global_env);
     }
     else
     {
-      function_level_analyze(child, &env);
+      function_level_analyze(child, global_env);
     }
   }
 }
 
 void Interpreter::function_level_analyze(Node *func_ast, Environment *parent_env)
 {
-  // ensure that there is func_name (func_params -> optional) {func_stmt_list}
+  // nkids == 1 --> lambda function, function() { SList }
+  // nkids == 2 --> lambda function, function(OptParamList) {SList}
+  //            --> normal function, function ident() {SList}
+  // nkids == 3 --> normal function, function ident(OptParamList) {Slist}
   int nkids = func_ast->get_num_kids();
   bool result;
-  assert(nkids == 2 || nkids == 3);
-
-  // get func name and stmt list and ensure their AST type
-  int stmt_idx = (nkids == 2) ? 1 : 2;
-  Node *func_name = func_ast->get_kid(0);
-  Node *stmt_list = func_ast->get_kid(stmt_idx);
-
-  assert(func_name->get_tag() == AST_VARREF);
+  assert(nkids == 1 || nkids == 2 || nkids == 3);
+  Node *stmt_list;
+  std::string func_name_str = "";
+  std::vector<std::string> param_names;
+  bool is_lambda = func_ast->get_kid(0)->get_tag() != AST_VARREF;
+  if (is_lambda)
+  {
+    // lambda function
+    stmt_list = func_ast->get_kid((nkids == 2) ? 1 : 0);
+  }
+  else
+  {
+    // normal function
+    stmt_list = func_ast->get_kid((nkids == 2) ? 1 : 2);
+    Node *func_name = func_ast->get_kid(0);
+    assert(func_name->get_tag() == AST_VARREF);
+    func_name_str = func_name->get_str();
+  }
   assert(stmt_list->get_tag() == AST_STATEMENT_LIST);
 
-  std::vector<std::string> param_names;
-
-  // if there are 3 kids, meaning there will be param lists
-  if (nkids == 3)
+  if ((nkids == 3 && !is_lambda) || (nkids == 2 && is_lambda))
   {
-
-    Node *func_parameters = func_ast->get_kid(1);
+    Node *func_parameters = func_ast->get_kid(is_lambda ? 0 : 1);
     assert(func_parameters->get_tag() == AST_PARAMETER_LIST);
     int nparamkids = func_parameters->get_num_kids();
     for (int k = 0; k < nparamkids; k++)
@@ -106,39 +115,41 @@ void Interpreter::function_level_analyze(Node *func_ast, Environment *parent_env
       param_names.push_back(func_parameters->get_kid(k)->get_str());
     }
   }
+  // if there are 3 kids, meaning there will be param lists
   // define function and put it into the parent environment
-  Function *func = new Function(func_name->get_str(), param_names, parent_env, stmt_list);
-  result = parent_env->define(func->get_name(), Value(func));
-  if (!result)
+  if (!is_lambda)
   {
-    SemanticError::raise(func_name->get_loc(), "Unable to define variable '%s' because the variable already exists", func_name->get_str().c_str());
+    Function *func = new Function(func_name_str, param_names, Value(parent_env), stmt_list);
+    result = parent_env->define(func->get_name(), Value(func));
+    if (!result)
+    {
+      SemanticError::raise(stmt_list->get_loc(), "Unable to define variable '%s' because the variable already exists", func_name_str.c_str());
+    }
   }
   // create new environment for function arguments
-  Environment arg_env = Environment(parent_env);
-
+  Value arg_env = Value(new Environment(Value(parent_env)));
   // define all the parameter variables in the new function environment
   for (std::vector<std::string>::const_iterator cit = param_names.cbegin();
        cit < param_names.cend(); cit++)
   {
-    result = arg_env.define(*cit, Value());
+    result = arg_env.get_env()->define(*cit, Value());
     if (!result)
     {
-      SemanticError::raise(func_name->get_loc(), "Unable to define variable '%s' because the variable already exists", (*cit).c_str());
+      SemanticError::raise(stmt_list->get_loc(), "Unable to define variable '%s' because the variable already exists", (*cit).c_str());
     }
   }
   // create new environment for function statements
-  Environment stmt_env = Environment(&arg_env);
+  Value stmt_env = Value(new Environment(Value(arg_env.get_env())));
   // get all statements
   int nkidkids = stmt_list->get_num_kids();
   for (int j = 0; j < nkidkids; j++)
   {
-    statement_level_analyze(stmt_list->get_kid(j), &stmt_env);
+    statement_level_analyze(stmt_list->get_kid(j), stmt_env.get_env());
   }
 }
 
 void Interpreter::statement_level_analyze(Node *state_ast, Environment *env)
-{
-  // iterate over all kids, if there is a control flow go to the corresponding function,
+{ // iterate over all kids, if there is a control flow go to the corresponding function,
   // otherwise pass into low level general analysis
   int nkids = state_ast->get_num_kids();
   for (int i = 0; i < nkids; i++)
@@ -159,7 +170,7 @@ void Interpreter::statement_level_analyze(Node *state_ast, Environment *env)
 void Interpreter::conditional_flow_analyze(Node *condition_ast, Environment *parent_env)
 {
   // create a new environment for statements inside control flow
-  Environment env = Environment(parent_env);
+  Value env = Value(new Environment(Value(parent_env)));
   bool is_if = condition_ast->get_tag() == AST_IF;
   int nkids = condition_ast->get_num_kids();
   for (int i = 0; i < nkids; i++)
@@ -172,7 +183,7 @@ void Interpreter::conditional_flow_analyze(Node *condition_ast, Environment *par
     }
     else
     {
-      low_level_analyze(child, &env);
+      low_level_analyze(child, env.get_env());
     }
   }
 }
@@ -207,6 +218,9 @@ void Interpreter::low_level_analyze(Node *current_ast, Environment *env)
       SemanticError::raise(current_ast->get_loc(), "Unable to access variable '%s' because it is never defined", var_name.c_str());
     }
     break;
+  case AST_FUNCTION:
+    function_level_analyze(current_ast, env);
+    break;
   default:
     for (int i = 0; i < nkids; ++i)
     {
@@ -218,6 +232,9 @@ void Interpreter::low_level_analyze(Node *current_ast, Environment *env)
 
 Value Interpreter::execute()
 {
+  global_env = new Environment();
+  global_env->add_ref();
+  preinstall_intrinsic_funcs(global_env);
   Value result;
   // pass into the hierachical execution
   result = unit_level_execute(m_ast);
@@ -226,9 +243,6 @@ Value Interpreter::execute()
 
 Value Interpreter::unit_level_execute(Node *unit_ast)
 {
-  // create global environment and preinstall intrinsic functions
-  Environment env = Environment();
-  preinstall_intrinsic_funcs(&env);
 
   // iterate over all kids and either go to statement or function execution
   // based on AST node type
@@ -237,39 +251,56 @@ Value Interpreter::unit_level_execute(Node *unit_ast)
   for (int i = 0; i < nkids; i++)
   {
     Node *child = unit_ast->get_kid(i);
-    outcome = (child->get_tag() == AST_STATEMENT) ? statement_level_execute(child, &env) : function_level_execute(child, &env);
+    outcome = (child->get_tag() == AST_STATEMENT) ? statement_level_execute(child, global_env) : function_level_execute(child, global_env);
   }
   return outcome;
 }
 
 Value Interpreter::function_level_execute(Node *func_ast, Environment *parent_env)
 {
+  // nkids == 1 --> lambda function, function() { SList }
+  // nkids == 2 --> lambda function, function(OptParamList) {SList}
+  //            --> normal function, function ident() {SList}
+  // nkids == 3 --> normal function, function ident(OptParamList) {Slist}
   int nkids = func_ast->get_num_kids();
   // based on whether there are parameter lists, nkids can either be 2 or 3
-  assert(nkids == 2 || nkids == 3);
+  assert(nkids == 1 || nkids == 2 || nkids == 3);
 
-  int stmt_idx = (nkids == 2) ? 1 : 2;
-
-  // get function name and function body
-  Node *func_name = func_ast->get_kid(0);
-  Node *stmt_list = func_ast->get_kid(stmt_idx);
-
+  Node *stmt_list;
   // initiate empty parameter vector, if there are parameter list AST,
   // push all parameter names into the vector
   std::vector<std::string> param_names;
-
-  if (nkids == 3)
+  std::string func_name_str = "";
+  bool is_lambda = func_ast->get_kid(0)->get_tag() != AST_VARREF;
+  if (is_lambda)
   {
-    Node *func_parameters = func_ast->get_kid(1);
+    // lambda function
+    stmt_list = func_ast->get_kid(nkids == 1 ? 0 : 1);
+  }
+  else
+  {
+    // normal function
+    Node *func_name = func_ast->get_kid(0);
+    stmt_list = func_ast->get_kid(nkids == 2 ? 1 : 2);
+    func_name_str = func_name->get_str();
+  }
+
+  // get function name and function body
+  if ((!is_lambda && nkids == 3) || (is_lambda && nkids == 2))
+  {
+    Node *func_parameters = func_ast->get_kid(is_lambda ? 0 : 1);
     int nparamkids = func_parameters->get_num_kids();
     for (int k = 0; k < nparamkids; k++)
     {
       param_names.push_back(func_parameters->get_kid(k)->get_str());
     }
   }
-  // define function and put it into the parent environment
-  Function *func = new Function(func_name->get_str(), param_names, parent_env, stmt_list);
-  parent_env->define(func->get_name(), Value(func));
+  // define function and put it into the parent environment if it is a normal function
+  Function *func = new Function(func_name_str, param_names, Value(parent_env), stmt_list);
+  if (!is_lambda)
+  {
+    parent_env->define(func->get_name(), Value(func));
+  }
   // return the value function
   return Value(func);
 }
@@ -317,13 +348,13 @@ Value Interpreter::if_flow_execute(Node *condition_ast, Environment *parent_env)
     // if statement execute
     // create new if environment and execute all following
     // statement list under this new environment
-    Environment if_env = Environment(parent_env);
+    Value if_env = Value(new Environment(Value(parent_env)));
     int nifkids = if_stmt_list->get_num_kids();
     Value result;
 
     for (int i = 0; i < nifkids; ++i)
     {
-      result = statement_level_execute(if_stmt_list->get_kid(i), &if_env);
+      result = statement_level_execute(if_stmt_list->get_kid(i), if_env.get_env());
     }
   }
   else if (nkids == 3)
@@ -333,12 +364,12 @@ Value Interpreter::if_flow_execute(Node *condition_ast, Environment *parent_env)
     // statement list under this new environment
     Node *else_stmt_list = condition_ast->get_kid(2);
     assert(else_stmt_list->get_tag() == AST_STATEMENT_LIST);
-    Environment else_env = Environment(parent_env);
+    Value else_env = Value(new Environment(Value(parent_env)));
     int nelsekids = else_stmt_list->get_num_kids();
     Value result;
     for (int i = 0; i < nelsekids; ++i)
     {
-      result = statement_level_execute(else_stmt_list->get_kid(i), &else_env);
+      result = statement_level_execute(else_stmt_list->get_kid(i), else_env.get_env());
     }
   }
   // conditional statement evaluates to 0
@@ -363,11 +394,11 @@ Value Interpreter::while_flow_execute(Node *condition_ast, Environment *parent_e
   {
     // create new while environment and execute all
     // statement in statement list in this new environment
-    Environment while_env = Environment(parent_env);
+    Value while_env = Value(new Environment(Value(parent_env)));
     int nwhilekids = while_stmt_list->get_num_kids();
     for (int i = 0; i < nwhilekids; i++)
     {
-      result = statement_level_execute(while_stmt_list->get_kid(i), &while_env);
+      result = statement_level_execute(while_stmt_list->get_kid(i), while_env.get_env());
     }
     // re-evaluate ident and ensure it is still numeric
     ident = low_level_execute(condition, parent_env);
@@ -397,6 +428,8 @@ Value Interpreter::low_level_execute(Node *current_ast, Environment *env)
     return low_level_execute_str_literal(current_ast, env);
   case AST_FNCALL:
     return low_level_execute_funcall(current_ast, env);
+  case AST_FUNCTION:
+    return function_level_execute(current_ast, env);
   default:
     return low_level_execute_operation(current_ast, env);
   }
@@ -419,7 +452,6 @@ Value Interpreter::low_level_execute_funcall(Node *funcall_ast, Environment *par
   if (val_kind == VALUE_INTRINSIC_FN)
   {
     // initiate argument lists with passed-in parameters if there are any
-    Environment arg_env = Environment(parent_env);
     int num_args = (nkids == 1) ? 0 : funcall_ast->get_kid(1)->get_num_kids();
     Value args[num_args];
     if (nkids == 2)
@@ -439,9 +471,9 @@ Value Interpreter::low_level_execute_funcall(Node *funcall_ast, Environment *par
   }
   else if (val_kind == VALUE_FUNCTION)
   {
-    Environment *curr_env = func_val.get_function()->get_parent_env();
+    Value curr_env = func_val.get_function()->get_parent_env();
     // create new env for function call argument list
-    Environment arg_env = Environment(curr_env);
+    Value arg_env = Value(new Environment(curr_env));
     Function *func = func_val.get_function();
     // find all the variables in the arglist and in the paramlist and match their values
     if (nkids == 2)
@@ -457,7 +489,7 @@ Value Interpreter::low_level_execute_funcall(Node *funcall_ast, Environment *par
       const std::vector<std::string> params = func->get_params();
       for (int i = 0; i < args; i++)
       {
-        arg_env.define(params[i], low_level_execute(func_arglist->get_kid(i), parent_env));
+        arg_env.get_env()->define(params[i], low_level_execute(func_arglist->get_kid(i), parent_env));
       }
     }
     else if (func->get_num_params() != 0)
@@ -466,12 +498,12 @@ Value Interpreter::low_level_execute_funcall(Node *funcall_ast, Environment *par
     }
     Value outcome;
     // create new env for function call statement list
-    Environment stmt_env = Environment(&arg_env);
+    Value stmt_env = Value(new Environment(arg_env));
     Node *funcall_stmt_list = func->get_body();
     int nstmtkids = funcall_stmt_list->get_num_kids();
     for (int i = 0; i < nstmtkids; ++i)
     {
-      outcome = statement_level_execute(funcall_stmt_list->get_kid(i), &stmt_env);
+      outcome = statement_level_execute(funcall_stmt_list->get_kid(i), stmt_env.get_env());
     }
     return outcome;
   }
@@ -515,8 +547,7 @@ Value Interpreter::low_level_execute_str_literal(Node *current_ast, Environment 
 {
   int nkids = current_ast->get_num_kids();
   assert(nkids == 0);
-  std::string *str_actual = new std::string(current_ast->get_str());
-  return Value(new Str(str_actual));
+  return Value(new Str(current_ast->get_str()));
 }
 
 Value Interpreter::low_level_execute_varref(Node *current_ast, Environment *env)
@@ -620,14 +651,10 @@ Value Interpreter::intrinsic_readint(Value args[], unsigned num_args,
 Value Interpreter::intrinsic_arr_mkarr(Value args[], unsigned num_args,
                                        const Location &loc, Interpreter *interp)
 {
-  std::vector<Value> *arr = new std::vector<Value>();
+  std::vector<Value> arr = std::vector<Value>();
   for (unsigned i = 0; i < num_args; ++i)
   {
-    if (args[i].get_kind() != VALUE_INT && args[i].get_kind() != VALUE_ARRAY)
-    {
-      EvaluationError::raise(loc, "Not an integer or an array, cannot be used in array");
-    }
-    arr->push_back(args[i]);
+    arr.push_back(args[i]);
   }
   Arr *array = new Arr(arr);
   return Value(array);
@@ -670,8 +697,6 @@ Value Interpreter::intrinsic_arr_set(Value args[], unsigned num_args,
   if (idx.get_kind() != VALUE_INT)
     EvaluationError::raise(loc, "arrays only have interger index");
   Value setter_val = args[2];
-  if (setter_val.get_kind() != VALUE_INT && setter_val.get_kind() != VALUE_ARRAY)
-    EvaluationError::raise(loc, "arrays can only store integers");
   return arr_val.get_array()->set(idx.get_ival(), setter_val);
 }
 
@@ -684,8 +709,6 @@ Value Interpreter::intrinsic_arr_push(Value args[], unsigned num_args,
   if (arr_val.get_kind() != VALUE_ARRAY)
     EvaluationError::raise(loc, "push function encounters a non-array parameter");
   Value push_val = args[1];
-  if (push_val.get_kind() != VALUE_INT && push_val.get_kind() != VALUE_ARRAY)
-    EvaluationError::raise(loc, "arrays can only store integers");
   arr_val.get_array()->push(push_val);
   return Value();
 }

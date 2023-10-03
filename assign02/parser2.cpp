@@ -436,6 +436,7 @@ Node *Parser2::parse_F()
   // F -> ^ string
   // F -> ^ ( A )
   // F →  ident ( OptArgList )
+  // F → function ( OptPList ) { SList }
 
   Node *next_tok = m_lexer->peek();
   if (next_tok == nullptr)
@@ -474,6 +475,24 @@ Node *Parser2::parse_F()
     }
     // F -> ^ ident
     return ast.release();
+  }
+  else if (tag == TOK_FUNC)
+  {
+    // F → function ( OptPList ) { SList }
+    std::unique_ptr<Node> func_tok(expect(static_cast<enum TokenKind>(TOK_FUNC)));
+    std::unique_ptr<Node> func_ast(new Node(AST_FUNCTION));
+    func_ast->set_loc(func_tok->get_loc());
+
+    expect_and_discard(TOK_LPAREN);
+    func_ast.reset(parse_OptPList(func_ast.release()));
+    expect_and_discard(TOK_RPAREN);
+
+    expect_and_discard(TOK_LBRACE);
+    std::unique_ptr<Node> slist_ast(parse_SList());
+    expect_and_discard(TOK_RBRACE);
+    func_ast->append_kid(slist_ast.release());
+
+    return func_ast.release();
   }
   else if (tag == TOK_LPAREN)
   {

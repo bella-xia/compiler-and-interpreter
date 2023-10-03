@@ -1,5 +1,0 @@
-var s;
-s = "A strong smell of petroleum prevails throughout";
-println(s);
-println(strlen(s));
-46;

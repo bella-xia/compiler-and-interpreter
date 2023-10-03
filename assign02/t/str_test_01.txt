@@ -1,4 +1,0 @@
-var a;
-a = "hello";
-println(a);
-42;

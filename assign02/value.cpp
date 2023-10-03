@@ -6,6 +6,7 @@
 #include "arr.h"
 #include "str.h"
 #include "value.h"
+#include "environment.h"
 
 Value::Value(enum ValueKind kind) : m_kind(kind){};
 
@@ -28,6 +29,11 @@ Value::Value(Arr *arr) : m_kind(VALUE_ARRAY), m_rep(arr)
 }
 
 Value::Value(Str *str) : m_kind(VALUE_STRING), m_rep(str)
+{
+  m_rep->add_ref();
+}
+
+Value::Value(Environment *env) : m_kind(VALUE_ENVIRONMENT), m_rep(env)
 {
   m_rep->add_ref();
 }
@@ -73,6 +79,10 @@ Value &Value::operator=(const Value &rhs)
   {
     // if it is dynamic, then remove the current reference
     m_rep->remove_ref();
+    if (m_rep->get_num_refs() == 0)
+    {
+      delete m_rep;
+    }
     if (rhs.is_dynamic())
     {
       m_rep = rhs.m_rep;
@@ -118,6 +128,12 @@ Str *Value::get_str()
   return m_rep->as_str();
 }
 
+Environment *Value::get_env()
+{
+  assert(m_kind == VALUE_ENVIRONMENT);
+  return m_rep->as_env();
+}
+
 std::string Value::as_str() const
 {
   switch (m_kind)
@@ -128,6 +144,8 @@ std::string Value::as_str() const
     return cpputil::format("<function %s>", m_rep->as_function()->get_name().c_str());
   case VALUE_INTRINSIC_FN:
     return "<intrinsic function>";
+  case VALUE_ENVIRONMENT:
+    return "<environment>";
   case VALUE_STRING:
     return print_str();
   case VALUE_ARRAY:
@@ -161,15 +179,14 @@ std::string Value::print_str() const
 {
   assert(m_kind == VALUE_STRING);
   std::string str = "";
-  std::string *str_obj = m_rep->as_str()->get_str();
-  int length = str_obj->size();
+  std::string str_obj = m_rep->as_str()->get_str();
+  int length = str_obj.size();
   bool escape = false;
   for (int i = 0; i < length; ++i)
   {
     if (escape)
     {
-      switch ((*str_obj)
-                  [i])
+      switch (str_obj[i])
       {
       case 't':
         str.append(cpputil::format("%c", '\t'));
@@ -187,11 +204,11 @@ std::string Value::print_str() const
         break;
       }
     }
-    else if ((int)(*str_obj)[i] != 92)
+    else if ((int)(str_obj[i]) != 92)
     {
-      str.append(cpputil::format("%c", (int)(*str_obj)[i]));
+      str.append(cpputil::format("%c", (int)(str_obj[i])));
     }
-    escape = (int)(*str_obj)[i] == 92;
+    escape = (int)(str_obj[i]) == 92;
   }
   return str;
 }

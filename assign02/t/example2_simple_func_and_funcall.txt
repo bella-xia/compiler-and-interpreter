@@ -1,7 +1,0 @@
-function q(x) {
-    x + 3;
-}
-
-var a;
-a = q(1);
-a;

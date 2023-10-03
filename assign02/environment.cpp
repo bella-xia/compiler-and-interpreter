@@ -1,10 +1,10 @@
 #include "environment.h"
 
-Environment::Environment(Environment *parent)
-    : m_parent(parent),
+Environment::Environment(Value parent)
+    : ValRep(VALREP_ENVIRONMENT), m_parent(parent),
       environment_map({})
 {
-  assert(m_parent != this);
+  assert(m_parent.is_invalid() || m_parent.get_env() != this);
 }
 
 Environment::~Environment()
@@ -17,11 +17,11 @@ Value Environment::lookup(std::string var)
   {
     return environment_map[var];
   }
-  else if (m_parent == nullptr)
+  else if (m_parent.is_invalid())
   {
     return Value(VALUE_INVALID);
   }
-  return m_parent->lookup(var);
+  return m_parent.get_env()->lookup(var);
 }
 
 bool Environment::define(std::string var, Value v)
@@ -41,11 +41,11 @@ bool Environment::modify(std::string var, Value v)
     environment_map[var] = v;
     return true;
   }
-  else if (m_parent == nullptr)
+  else if (m_parent.is_invalid())
   {
     return false;
   }
-  return m_parent->modify(var, v);
+  return m_parent.get_env()->modify(var, v);
 }
 
 // TODO: implement member functions

@@ -7,6 +7,7 @@ class ValRep;
 class Function;
 class Arr;
 class Str;
+class Environment;
 
 enum ValueKind
 {
@@ -21,6 +22,7 @@ enum ValueKind
   VALUE_FUNCTION,
   VALUE_ARRAY,
   VALUE_STRING,
+  VALUE_ENVIRONMENT,
   // could add other kinds of dynamic values here
 };
 
@@ -59,6 +61,7 @@ public:
   Value(Function *fn);
   Value(Arr *arr);
   Value(Str *str);
+  Value(Environment *env);
   Value(IntrinsicFn intrinsic_fn);
   Value(const Value &other);
   ~Value();
@@ -86,6 +89,7 @@ public:
   Function *get_function() const;
   Arr *get_array();
   Str *get_str();
+  Environment *get_env();
 
   IntrinsicFn get_intrinsic_fn() const
   {

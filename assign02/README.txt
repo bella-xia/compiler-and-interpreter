@@ -1,28 +1,51 @@
-For the lexer implementation, since the majority of the rough structure is given, I
-only made minor adjustments to the large switch statement in read_token. To avoid 
-repetition of code, I grouped all the single-digit operations, all the possibly 
-singe-or-double-digit operations (< -> <=; > -> >=; = -> ==), and all the 
-either-double-or-erroneous ones into three distinct function calls and created respective
-std::map to associate the operator with its corresponding token name. 
+Milestone One:
+I first added the required new TOKEN and AST nodes in lexer and parse2 part. 
 
-For the parser implementation, since the core recursive functions are given, I mostly implemented
-the other parse non-terminal functions according to the existing ones. So even for the non-infix
-operators, I tried to get both LHS and RHS parsed and then reset the LHS unique pointer to the 
-operator and assigned the original LHS and RHS root nodes as its two kids. 
+To ensure that both if/else statements and intrinsic functions would work in the current system,
+I completed the implementation for the environment, valrep, and value classes.
 
-For the interpreter implementation, I choose a similar structure for both analyze and execute 
-functions. Specifically, I split the recursive interpretation process into three levels: the 
-unit-level (which will only be called once at least in the current implementation), the 
-statement-level (which will be called for as many as the number of lines in the code), and the 
-remaining low-level. The unit level will iterate over all its statement kids, whereas the statement
-will similarly iterate over all its current kids. the low-level function would recursively interpret 
-the abstract symbol tree elements.
+I am able to retain a big part of my code structure as the last assignment. Particularly, 
+the majority of the hierachical flow for both the analyze and execute part is retained the 
+same: 
 
-The unit level is going to create an environment variable whereas its pointer
-would be passed into each statement-level and low-level function to ensure that the whole script 
-shares the same variable environment. The environment is composed of a map of string (variable name) 
-and Value class (only the KIND_INT and a self-implemented KIND_INVALID are used because currently
-there are no atomic / dynamic function). There are three helper functions in the environment class,
-namely look_up, define, and assign_int. Each function has a retuning value that indicates an error 
-has occured to be passed back to the interpreter class so that the error can be thrown with specific
-location and other relevant information. 
+unit-level --> statement-level --> low-level
+
+The only two change I have made are for the if/else statement and intrinsic functions.
+For the first change, I split the breakdown of children in statement-level so that
+it can either go to an if/else or while-level, where the new environment necessary will be
+created, and from there it gets then passe again back to statement-level. For the second change, I 
+add one more execution at low-level breakdown : funcall which deals with whenever an intrinsic
+functional call happens. I also need to add a helper function called "preinstall_intrinsic_functions"
+which helps install all intrinsic functions at global environment so that it can access everywhere.
+
+THe overall flow now looks like:
+
+unit-level (preinstall intrinsic funcs) --> statement-level  <--> (optional: if / while-level)
+                                                    --> low-level
+
+Milestone Two:
+
+I first added the required new TOKEN and AST nodes in lexer and parse2 part for the new String datatype, 
+lambda and normal function.
+
+For this milestone I mostly used the same implementation as before. The biggest changes compared 
+to last milestone would be I converted all environment to VarRep data type which then get wrapped
+in a Value wrapper, and the addition of reference counting to keep track of all the dynamic valreps
+inside Value datatype.
+
+I implemented Str and Arr as respective new classes with their separate header and cpp files, then
+added them to the compilation in Makefile. 
+
+For Str and Arr, I just added their respective intrinsic functions and use the same pre-install
+intrinsics funcs helper function to install them in global environment. For function, however, 
+I need to split the unit level passing down to children to function-level and statement-level,
+so that the function can be processed and the its statementlist again passed to statement-level.
+Becuase of the existence of lambda functions, I also need to check the situation of function-level
+appearing in low-level execution. I also added funcall at low-level execution so that it deals with
+situation whenever an already-declared function is called later.
+
+The full flow now looks like:
+
+unit-level (instrinsic) --> function-level
+               |-->             |--> statement-level  <--> (optional: if / while-level)
+                                            |--> low-level

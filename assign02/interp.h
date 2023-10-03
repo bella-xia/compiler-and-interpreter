@@ -10,8 +10,8 @@ class Interpreter
 {
 private:
   Node *m_ast;
-  std::set<std::string> defined_var;
   std::map<std::string, IntrinsicFn> intrinsic_funcs;
+  Environment *global_env;
 
 public:
   Interpreter(Node *ast_to_adopt);

@@ -1,4 +1,0 @@
-var s;
-s = "a\nb\tc\n\"foo\"";
-println(s);
-44;

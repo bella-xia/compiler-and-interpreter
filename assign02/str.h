@@ -11,7 +11,7 @@ class Node;
 class Str : public ValRep
 {
 private:
-    std::string *m_str;
+    std::string m_str;
 
     // value semantics prohibited
     Str(const Str &);
@@ -20,13 +20,13 @@ private:
 public:
     // constructor
     Str();
-    Str(std::string *str);
+    Str(std::string str);
     virtual ~Str();
 
-    int get_len() { return m_str->size(); }
-    std::string *get_str() { return m_str; }
+    int get_len() { return m_str.size(); }
+    std::string get_str() { return m_str; }
     Str *get_substr(int start, int len);
-    Str *get_strcat(Str *other) { return new Str(new std::string((*m_str) + (*other->get_str()))); }
+    Str *get_strcat(Str *other) { return new Str(std::string(m_str + other->get_str())); }
 };
 
 #endif // FUNCTION_H

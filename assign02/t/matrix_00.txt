@@ -1,8 +1,0 @@
-var a;
-var b;
-var c;
-var d;
-a = mkarr(1, 2, 3);
-b = mkarr(2, 3, 4);
-c = mkarr(3, 4, 5);
-d = mkarr(a, b, c);

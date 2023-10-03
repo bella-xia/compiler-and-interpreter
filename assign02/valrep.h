@@ -5,6 +5,7 @@
 class Function;
 class Arr;
 class Str;
+class Environment;
 // A "ValRep" (value representation) is a type used as
 // a dynamically-allocated object serving as the representation
 // of a Value. ValReps are reference counted, so many Values
@@ -14,7 +15,8 @@ enum ValRepKind
 {
   VALREP_FUNCTION,
   VALREP_VECTOR,
-  VALREP_STRING
+  VALREP_STRING,
+  VALREP_ENVIRONMENT
   // other kinds of valreps (e.g., vector, string, etc.) could be added
 };
 
@@ -56,6 +58,7 @@ public:
   Function *as_function();
   Arr *as_array();
   Str *as_str();
+  Environment *as_env();
 };
 
 #endif

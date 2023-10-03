@@ -1,6 +1,0 @@
-function q(x) {
-    x;
-}
-
-var a;
-a = q();

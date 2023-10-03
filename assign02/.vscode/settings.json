@@ -47,6 +47,7 @@
     "typeinfo": "cpp",
     "set": "cpp",
     "cstring": "cpp",
-    "cinttypes": "cpp"
+    "cinttypes": "cpp",
+    "cassert": "cpp"
   }
 }

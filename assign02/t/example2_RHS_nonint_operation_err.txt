@@ -1,7 +1,0 @@
-var a;
-
-function m(x) {
-    5 + x;
-}
-
-a / m;
