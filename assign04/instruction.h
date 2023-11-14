@@ -7,7 +7,8 @@
 
 // Instruction object type.
 // Can be used for either high-level or low-level code.
-class Instruction {
+class Instruction
+{
 private:
   int m_opcode;
   unsigned m_num_operands;
@@ -41,6 +42,8 @@ public:
 
   void set_symbol(Symbol *sym) { m_symbol = sym; }
   Symbol *get_symbol() const { return m_symbol; }
+
+  int get_type_storage_size() const { return m_symbol->get_type()->get_storage_size(); }
 };
 
 #endif // INSTRUCTION_H

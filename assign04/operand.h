@@ -8,32 +8,34 @@
 // (machine) linear IR code.  These have value semantics, and
 // can be passed and returned by value.
 
-class Operand {
+class Operand
+{
 public:
-  enum Kind {
-    NONE,            // used only for invalid Operand values
+  enum Kind
+  {
+    NONE, // used only for invalid Operand values
 
-                     // Description                       Example
-                     // --------------------------------  ---------------------
+    // Description                       Example
+    // --------------------------------  ---------------------
 
-    VREG,            // just a vreg                       vr0
-    VREG_MEM,        // memref using vreg ptr             (vr0)
-    VREG_MEM_IDX,    // memref using vreg ptr+index       (vr0, vr1)
-    VREG_MEM_OFF,    // memref using vreg ptr+imm offset  8(vr0)
+    VREG,         // just a vreg                       vr0
+    VREG_MEM,     // memref using vreg ptr             (vr0)
+    VREG_MEM_IDX, // memref using vreg ptr+index       (vr0, vr1)
+    VREG_MEM_OFF, // memref using vreg ptr+imm offset  8(vr0)
 
-    MREG8,           // just an mreg                      %al
-    MREG16,          // just an mreg                      %ax
-    MREG32,          // just an mreg                      %eax
-    MREG64,          // just an mreg                      %rax
-    MREG64_MEM,      // memref using mreg ptr             (%rax)
-    MREG64_MEM_IDX,  // memref using mreg ptr+index       (%rax,%rsi)
-    MREG64_MEM_OFF,  // memref using mreg ptr+imm offset  8(%rax)
+    MREG8,                // just an mreg                      %al
+    MREG16,               // just an mreg                      %ax
+    MREG32,               // just an mreg                      %eax
+    MREG64,               // just an mreg                      %rax
+    MREG64_MEM,           // memref using mreg ptr             (%rax)
+    MREG64_MEM_IDX,       // memref using mreg ptr+index       (%rax,%rsi)
+    MREG64_MEM_OFF,       // memref using mreg ptr+imm offset  8(%rax)
     MREG64_MEM_IDX_SCALE, // memref mreg ptr+(index*scale) (%r13,%r9,4)
 
-    IMM_IVAL,        // immediate signed int              $1
+    IMM_IVAL, // immediate signed int              $1
 
-    LABEL,           // label                             .L0
-    IMM_LABEL,       // immediate label                   $printf
+    LABEL,     // label                             .L0
+    IMM_LABEL, // immediate label                   $printf
   };
 
 private:
@@ -97,6 +99,9 @@ public:
   // (Either because it *is* an immediate integer value, or because
   // it has an immediate integer offset.)
   bool has_imm_ival() const;
+
+  // determine whether it is currently in stack
+  bool is_in_stack() const;
 
   // Does the operand have a label?
   // (Either because it is a label, or is an immediate label.)

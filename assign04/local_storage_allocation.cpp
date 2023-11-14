@@ -30,7 +30,6 @@ void LocalStorageAllocation::visit_declarator_list(Node *n)
       // if it is an integral value or a pointer value
       // find its symbol and label the virtual register address
       declarator_symbol->set_vreg(m_next_vreg);
-      // std::cout << "defined symbol " << declarator_symbol->get_name() << " in virtual register " << m_next_vreg << std::endl;
       (*i)->set_operand(Operand(Operand::VREG, m_next_vreg));
       std::cout << "/* variable '" << declarator_symbol->get_name() << "' allocated vreg " << m_next_vreg << " */" << std::endl;
       m_next_vreg++;
@@ -38,7 +37,6 @@ void LocalStorageAllocation::visit_declarator_list(Node *n)
     else
     {
       unsigned offset = m_storage_calc.add_field(declarator_type);
-      // std::cout << "defined symbol " << declarator_symbol->get_name() << " in stack offset " << offset << std::endl;
       declarator_symbol->set_offset(offset);
       std::cout << "/* variable '" << declarator_symbol->get_name() << "' allocated " << declarator_type->get_storage_size() << " bytes of storage at offset " << offset << " */" << std::endl;
       m_total_local_storage += offset;
@@ -86,7 +84,6 @@ void LocalStorageAllocation::visit_function_parameter_list(Node *n)
       std::cout << "/* variable '" << param_symbol->get_name() << "' allocated vreg " << m_next_vreg << " */" << std::endl;
       (*i)->set_function_operand(Operand(Operand::VREG, start_vreg_ars));
       (*i)->set_operand(Operand(Operand::VREG, m_next_vreg));
-      // std::cout << "defined function symbol " << param_symbol->get_name() << " in virtual register " << start_vreg_ars << std::endl;
       start_vreg_ars++;
       m_next_vreg++;
     }
@@ -94,7 +91,6 @@ void LocalStorageAllocation::visit_function_parameter_list(Node *n)
     {
       // other types (most likely structs) get allocation space
       unsigned offset = m_storage_calc.add_field(param_type);
-      // std::cout << "defined function symbol " << param_symbol->get_name() << " in stack offset " << offset << std::endl;
       param_symbol->set_offset(offset);
       std::cout << "/* variable '" << param_symbol->get_name() << "' allocated " << param_type->get_storage_size() << " bytes of storage at offset " << offset << " */" << std::endl;
       m_total_local_storage += offset;
@@ -108,63 +104,10 @@ void LocalStorageAllocation::visit_function_declaration(Node *n)
   // don't allocate storage for parameters in a function declaration
 }
 
-// void LocalStorageAllocation::visit_statement_list(Node *n)
-// {
-//   for (auto i = n->cbegin(); i != n->cend(); i++)
-//   {
-//   }
-//   // TODO: implement
-// }
-
 void LocalStorageAllocation::visit_struct_type_definition(Node *n)
 {
-  // find the symbol
-  // std::shared_ptr<Type> struct_type = n->get_type();
-  // assert(n->has_symbol());
-  // Symbol *struct_symbol = n->get_symbol();
-  // int num_members = struct_type->get_num_members();
-  // int offset = 0;
-  // for (int i = 0; i < num_members; i++)
-  // {
-  //   const Member &mem = struct_type->get_member(i);
-  //   std::shared_ptr<Type> mem_type(mem.get_type());
-  //   std::string mem_name = mem.get_name();
-  //   struct_symbol->add_member_offset(mem_name, mem_type, offset);
-  //   offset += mem_type->get_storage_size();
-  // }
-
   // TODO: implement (if you are going to use this visitor to assign offsets for struct fields)
   // basically nothing happens to prevent additional vreg / offset definition
 }
-
-// void LocalStorageAllocation::visit_unary_expression(Node *n)
-// {
-//   int unary_tag = n->get_kid(0)->get_tag();
-//   Node *var = n->get_kid(1);
-//   std::shared_ptr<Type> var_type(var->get_type());
-//   // consider the case * and &
-//   switch (unary_tag)
-//   {
-//   case TOK_AMPERSAND: /* ‘&’， taking the address */
-//   {
-//     assert(var->has_symbol());
-//     Symbol *var_symbol = var->get_symbol();
-//     std::string var_name = var_symbol->get_name();
-//     if (var_symbol->is_vreg())
-//     {
-//       // if the variable being referenced is currently in a
-//       // virtual register, we need to change it to a stack offset
-//       unsigned offset = m_storage_calc.add_field(var_type);
-//       std::cout << "defined symbol " << var_symbol->get_name() << " switched to stack offset " << offset << std::endl;
-//       var_symbol->set_offset(offset);
-//       m_total_local_storage += offset;
-//     }
-//   }
-//   break;
-//   default:
-//     visit(var);
-//     break;
-//   }
-// }
 
 // TODO: implement private member functions

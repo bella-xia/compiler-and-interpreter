@@ -24,7 +24,7 @@ private:
   std::shared_ptr<Type> m_type;
   SymbolTable *m_symtab;
   bool m_is_defined, m_is_vreg, m_has_function_vreg;
-  int m_vreg, m_function_vreg, m_next_vreg;
+  int m_vreg, m_function_vreg, m_next_vreg, m_max_vreg;
   unsigned m_offset, m_stack_size;
 
   // value semantics prohibited
@@ -59,8 +59,10 @@ public:
 
   void set_stack_size(unsigned stack_size);
   void set_next_vreg(int vreg);
+  void set_max_vreg(int vreg);
   unsigned get_stack_size() { return m_stack_size; }
   int get_next_vreg() { return m_next_vreg; }
+  int get_max_vreg() { return m_max_vreg; }
 };
 
 class SymbolTable

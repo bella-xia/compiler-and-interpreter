@@ -14,7 +14,7 @@ private:
   bool m_optimize;
   std::string m_return_label_name; // name of the label that return instructions should target
   std::shared_ptr<InstructionSequence> m_hl_iseq;
-  int next_vreg_num;
+  int next_vreg_num, max_vreg_num;
 
 public:
   // the next_label_num controls where the next_label() member function

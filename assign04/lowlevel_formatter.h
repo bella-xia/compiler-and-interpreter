@@ -2,8 +2,10 @@
 #define LOWLEVEL_FORMATTER_H
 
 #include "formatter.h"
+#include <iostream>
 
-class LowLevelFormatter : public Formatter {
+class LowLevelFormatter : public Formatter
+{
 public:
   LowLevelFormatter();
   virtual ~LowLevelFormatter();

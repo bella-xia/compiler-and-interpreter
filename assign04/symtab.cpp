@@ -7,9 +7,11 @@
 ////////////////////////////////////////////////////////////////////////
 
 Symbol::Symbol(SymbolKind kind, const std::string &name, const std::shared_ptr<Type> &type, SymbolTable *symtab, bool is_defined)
-    : m_kind(kind), m_name(name), m_type(type), m_symtab(symtab), m_is_defined(is_defined),
-      m_is_vreg(type->is_integral() || type->is_pointer()), m_vreg(0), m_offset(0),
-      m_stack_size(0), m_next_vreg(0), m_function_vreg(0), m_has_function_vreg(false)
+    : m_kind(kind), m_name(name), m_type(type), m_symtab(symtab),
+      m_is_defined(is_defined),
+      m_is_vreg(type->is_integral() || type->is_pointer()), m_has_function_vreg(false),
+      m_vreg(0), m_function_vreg(0), m_next_vreg(0), m_max_vreg(0),
+      m_offset(0), m_stack_size(0)
 {
 }
 
@@ -114,6 +116,12 @@ void Symbol::set_next_vreg(int vreg)
   m_next_vreg = vreg;
 }
 
+void Symbol::set_max_vreg(int vreg)
+{
+  assert(m_type->is_function());
+  m_max_vreg = vreg;
+}
+
 ////////////////////////////////////////////////////////////////////////
 // SymbolTable implementation
 ////////////////////////////////////////////////////////////////////////
@@ -216,6 +224,7 @@ void SymbolTable::add_symbol(Symbol *sym)
   m_lookup[sym->get_name()] = pos;
 
   // Assignment 3 only: print out symbol table entries as they are added
+  /*
   printf("%d|", get_depth());
   printf("%s|", sym->get_name().c_str());
   switch (sym->get_kind())
@@ -234,6 +243,7 @@ void SymbolTable::add_symbol(Symbol *sym)
   }
 
   printf("%s\n", sym->get_type()->as_str().c_str());
+  */
 }
 
 int SymbolTable::get_depth() const

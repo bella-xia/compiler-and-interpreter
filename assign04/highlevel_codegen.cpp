@@ -85,7 +85,7 @@ Operand HighLevelCodegen::check_types(const Operand &original_op,
 
 HighLevelCodegen::HighLevelCodegen(int next_label_num, bool optimize)
     : m_next_label_num(next_label_num), m_optimize(optimize), m_hl_iseq(new InstructionSequence()),
-      next_vreg_num(10)
+      next_vreg_num(10), max_vreg_num(0)
 {
 }
 
@@ -107,6 +107,9 @@ void HighLevelCodegen::visit_function_definition(Node *n)
 
   int temp_next_vreg = next_vreg_num;
   next_vreg_num = n->get_symbol()->get_next_vreg();
+
+  int temp_max_vreg = max_vreg_num;
+  max_vreg_num = 0;
   // visit parameters
   visit(n->get_kid(2));
   // visit body
@@ -122,6 +125,8 @@ void HighLevelCodegen::visit_function_definition(Node *n)
   }
 
   next_vreg_num = temp_next_vreg;
+  n->get_symbol()->set_max_vreg(max_vreg_num);
+  max_vreg_num = temp_max_vreg;
 }
 
 void HighLevelCodegen::visit_function_parameter_list(Node *n)
@@ -344,10 +349,18 @@ void HighLevelCodegen::visit_unary_expression(Node *n)
   case TOK_ASTERISK:
     // dereference
     {
-      HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, n->get_type());
-      Operand dest(Operand(Operand::VREG, next_temp_vreg()));
-      m_hl_iseq->append(new Instruction(mov_opcode, dest, var->get_operand().to_memref()));
-      n->set_operand(dest);
+      Operand orig_operand = var->get_operand();
+      if (orig_operand.get_kind() == Operand::VREG)
+      {
+        n->set_operand(Operand(var->get_operand().to_memref()));
+      }
+      else
+      {
+        HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, std::shared_ptr<Type>(new PointerType(std::shared_ptr<Type>(n->get_type()))));
+        Operand dest(Operand(Operand::VREG, next_temp_vreg()));
+        m_hl_iseq->append(new Instruction(mov_opcode, dest, var->get_operand()));
+        n->set_operand(dest.to_memref());
+      }
     }
     break;
   case TOK_AMPERSAND:
@@ -508,7 +521,9 @@ void HighLevelCodegen::visit_variable_ref(Node *n)
   else if (ref_symbol->is_offset())
   {
     Operand mem_ref = Operand(Operand::VREG, next_temp_vreg());
-    m_hl_iseq->append(new Instruction(HINS_localaddr, mem_ref, Operand(Operand::IMM_IVAL, ref_symbol->get_offset())));
+    Instruction *localaddr_instru = new Instruction(HINS_localaddr, mem_ref, Operand(Operand::IMM_IVAL, ref_symbol->get_offset()));
+    localaddr_instru->set_symbol(ref_symbol);
+    m_hl_iseq->append(localaddr_instru);
     n->set_operand(mem_ref.to_memref());
     // do later
   }
@@ -575,6 +590,21 @@ void HighLevelCodegen::visit_relational_operation(Node *n)
   Node *RHS = n->get_kid(2);
   Operand LHS_op = LHS->get_operand();
   Operand RHS_op = RHS->get_operand();
+  if (LHS_op.get_kind() == Operand::VREG_MEM)
+  {
+    Operand temp = Operand(Operand::VREG, next_temp_vreg());
+    HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, LHS->get_type());
+    m_hl_iseq->append(new Instruction(mov_opcode, temp, LHS_op));
+    LHS_op = temp;
+  }
+  if (RHS_op.get_kind() == Operand::VREG_MEM)
+  {
+    Operand temp = Operand(Operand::VREG, next_temp_vreg());
+    HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, RHS->get_type());
+    m_hl_iseq->append(new Instruction(mov_opcode, temp, RHS_op));
+    RHS_op = temp;
+  }
+
   Node *op = n->get_kid(0);
   Operand dest(Operand::VREG, next_temp_vreg());
   HighLevelOpcode comp_opcode;
@@ -612,6 +642,20 @@ void HighLevelCodegen::visit_plus_minus_operation(Node *n)
   Node *RHS = n->get_kid(2);
   Operand LHS_op = LHS->get_operand();
   Operand RHS_op = RHS->get_operand();
+  if (LHS_op.get_kind() == Operand::VREG_MEM)
+  {
+    Operand temp = Operand(Operand::VREG, next_temp_vreg());
+    HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, LHS->get_type());
+    m_hl_iseq->append(new Instruction(mov_opcode, temp, LHS_op));
+    LHS_op = temp;
+  }
+  if (RHS_op.get_kind() == Operand::VREG_MEM)
+  {
+    Operand temp = Operand(Operand::VREG, next_temp_vreg());
+    HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, RHS->get_type());
+    m_hl_iseq->append(new Instruction(mov_opcode, temp, RHS_op));
+    RHS_op = temp;
+  }
   int tag = n->get_kid(0)->get_tag();
   HighLevelOpcode opcode = (tag == TOK_PLUS) ? get_opcode(
                                                    HINS_add_b, n->get_type())
@@ -628,6 +672,20 @@ void HighLevelCodegen::visit_other_arithmetic_operation(Node *n)
   Node *RHS = n->get_kid(2);
   Operand LHS_op = LHS->get_operand();
   Operand RHS_op = RHS->get_operand();
+  if (LHS_op.get_kind() == Operand::VREG_MEM)
+  {
+    Operand temp = Operand(Operand::VREG, next_temp_vreg());
+    HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, LHS->get_type());
+    m_hl_iseq->append(new Instruction(mov_opcode, temp, LHS_op));
+    LHS_op = temp;
+  }
+  if (RHS_op.get_kind() == Operand::VREG_MEM)
+  {
+    Operand temp = Operand(Operand::VREG, next_temp_vreg());
+    HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, RHS->get_type());
+    m_hl_iseq->append(new Instruction(mov_opcode, temp, RHS_op));
+    RHS_op = temp;
+  }
   HighLevelOpcode opcode;
   switch (tag)
   {
@@ -660,6 +718,7 @@ std::string HighLevelCodegen::next_label()
 int HighLevelCodegen::next_temp_vreg()
 {
   int temp_vreg = next_vreg_num;
+  max_vreg_num = (next_vreg_num > max_vreg_num) ? next_vreg_num : max_vreg_num;
   next_vreg_num++;
   return temp_vreg;
 }

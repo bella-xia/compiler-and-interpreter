@@ -21,10 +21,10 @@
 #include <cassert>
 #include "node_base.h"
 
-NodeBase::NodeBase() : m_type(nullptr), m_function_type(nullptr), m_symbol(nullptr), m_is_lvalue(true),
-                       m_has_literal(false), m_literal(LiteralValue()),
-                       m_operand(Operand()), m_has_operand(false),
-                       m_function_operand(Operand()), m_has_function_operand(false)
+NodeBase::NodeBase() : m_type(nullptr), m_function_type(nullptr), m_symbol(nullptr), m_literal(LiteralValue()),
+                       m_is_lvalue(true), m_has_literal(false), m_has_operand(false),
+                       m_has_function_operand(false), m_has_function_type(false),
+                       m_operand(Operand()), m_function_operand(Operand())
 {
 }
 
