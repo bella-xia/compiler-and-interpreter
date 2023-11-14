@@ -10,16 +10,18 @@
 #include "exceptions.h"
 #include "semantic_analysis.h"
 
-SemanticAnalysis::SemanticAnalysis()
-    : m_global_symtab(new SymbolTable(nullptr)),
+SemanticAnalysis::SemanticAnalysis(std::vector<SymbolTable *> &symtabs)
+    : m_global_symtab(new SymbolTable(nullptr)), m_symtabs(symtabs),
       m_string_literal_map(new std::map<std::string, Node *>())
+
 {
   m_cur_symtab = m_global_symtab;
+  m_symtabs.push_back(m_global_symtab);
 }
 
 SemanticAnalysis::~SemanticAnalysis()
 {
-  // delete m_global_symtab;
+  delete m_string_literal_map;
 }
 
 void SemanticAnalysis::visit_struct_type(Node *n)
@@ -32,7 +34,7 @@ void SemanticAnalysis::visit_struct_type(Node *n)
   Symbol *struct_symbol = m_cur_symtab->lookup_recursive("struct " + struct_name);
   if (struct_symbol == nullptr)
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "unable to find struct instance '%s'", ("struct " + struct_name).c_str());
   }
   else
@@ -80,7 +82,7 @@ void SemanticAnalysis::visit_variable_declaration(Node *n)
     if (defined_symbol != nullptr)
     {
       std::shared_ptr<Type> defined_type(defined_symbol->get_type());
-      leave_non_global_scopes();
+      leave_all_scopes();
       SemanticError::raise(n->get_loc(), "Double declaration of variable '%s': previously as type '%s' and now as '%s' ",
                            var_name.c_str(), defined_type->as_str().c_str(), var_type->as_str().c_str());
     }
@@ -109,7 +111,7 @@ void SemanticAnalysis::visit_basic_type(Node *n)
       }
       else
       {
-        leave_non_global_scopes();
+        leave_all_scopes();
         SemanticError::raise(n->get_loc(), "Double / conflicting declaration of basic type void / int / char");
         // throw error bc more than one type is given
       }
@@ -127,12 +129,12 @@ void SemanticAnalysis::visit_basic_type(Node *n)
         if (types[1] == m_tag)
         {
           std::string keyword = m_tag == NODE_TOK_SHORT ? "short" : "long";
-          leave_non_global_scopes();
+          leave_all_scopes();
           SemanticError::raise(n->get_loc(), "Double declaration of keyword '%s'", keyword.c_str());
         }
         else
         {
-          leave_non_global_scopes();
+          leave_all_scopes();
           SemanticError::raise(n->get_loc(), "Conflicting declaration of keyword 'short' and 'long'");
         }
         // throw error bc more than one type is given
@@ -150,12 +152,12 @@ void SemanticAnalysis::visit_basic_type(Node *n)
         if (types[1] == m_tag)
         {
           std::string keyword = m_tag == NODE_TOK_SIGNED ? "signed" : "unsigned";
-          leave_non_global_scopes();
+          leave_all_scopes();
           SemanticError::raise(n->get_loc(), "Double declaration of keyword '%s'", keyword.c_str());
         }
         else
         {
-          leave_non_global_scopes();
+          leave_all_scopes();
           SemanticError::raise(n->get_loc(), "Conflicting declaration of keyword 'signed' and 'unsigned'");
         }
         // throw error bc more than one type is given
@@ -164,7 +166,7 @@ void SemanticAnalysis::visit_basic_type(Node *n)
     case NODE_TOK_CONST:
       if (types[3] == NODE_TOK_CONST || types[4] == NODE_TOK_CONST)
       {
-        leave_non_global_scopes();
+        leave_all_scopes();
         SemanticError::raise(n->get_loc(), "Double declaration of qualifier 'const'");
         // throw error bc double declaration of const
       }
@@ -180,7 +182,7 @@ void SemanticAnalysis::visit_basic_type(Node *n)
     case NODE_TOK_VOLATILE:
       if (types[3] == NODE_TOK_VOLATILE || types[4] == NODE_TOK_VOLATILE)
       {
-        leave_non_global_scopes();
+        leave_all_scopes();
         SemanticError::raise(n->get_loc(), "Double declaration of qualifier 'volatile'");
         // throw error bc double declaration of const
       }
@@ -203,13 +205,13 @@ void SemanticAnalysis::visit_basic_type(Node *n)
   {
     if (types[1] != -1 || types[2] != -1)
     {
-      leave_non_global_scopes();
+      leave_all_scopes();
       SemanticError::raise(n->get_loc(), "Invalid keyword for basic type void");
       // throw error: undefined specifier for void
     }
     else if (types[3] != -1)
     {
-      leave_non_global_scopes();
+      leave_all_scopes();
       SemanticError::raise(n->get_loc(), "Invalid qualifier for basic type void");
     }
     // assign kind = VOID
@@ -223,7 +225,7 @@ void SemanticAnalysis::visit_basic_type(Node *n)
     }
     else if (types[0] == -1 && types[2] == -1)
     {
-      leave_non_global_scopes();
+      leave_all_scopes();
       SemanticError::raise(n->get_loc(), "Empty basic type");
       // throw error : empty base type
     }
@@ -236,7 +238,7 @@ void SemanticAnalysis::visit_basic_type(Node *n)
   {
     if (types[1] != -1)
     {
-      leave_non_global_scopes();
+      leave_all_scopes();
       SemanticError::raise(n->get_loc(), "Invalid keyword 'long' / 'short' for basic type char");
       // throw error: char does not have long / short
     }
@@ -282,20 +284,20 @@ void SemanticAnalysis::visit_function_definition(Node *n)
   {
     if (!func_symbol->get_type()->is_function())
     {
-      leave_non_global_scopes();
+      leave_all_scopes();
       SemanticError::raise(n->get_loc(), "Double declaration of variable '%s': previously as type '%s' and now as function ",
                            func_name.c_str(), func_symbol->get_type()->as_str().c_str());
     }
     if (func_symbol->is_defined())
     {
-      leave_non_global_scopes();
+      leave_all_scopes();
       SemanticError::raise(n->get_loc(), "Double definition of function '%s'", func_name.c_str());
     }
     visit(n->get_kid(0));
     std::shared_ptr<Type> return_type(n->get_kid(0)->get_type());
     if (!std::shared_ptr<Type>(func_symbol->get_type()->get_base_type())->is_same(return_type.get()))
     {
-      leave_non_global_scopes();
+      leave_all_scopes();
       SemanticError::raise(n->get_loc(), "Definition of function '%s' with different return type than declared function. Expected '%s' but defined as '%s'",
                            func_name.c_str(),
                            func_symbol->get_type()->get_base_type()->as_str().c_str(),
@@ -322,7 +324,7 @@ void SemanticAnalysis::visit_function_definition(Node *n)
   int define_param = func_members->get_num_kids();
   if (declare_param != define_param)
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "Definition of function '%s' with different parameter number than declared function, expected %d but defined as %d",
                          func_name.c_str(),
                          declare_param,
@@ -340,7 +342,7 @@ void SemanticAnalysis::visit_function_definition(Node *n)
     std::shared_ptr<Type> param_type((*i)->get_type());
     if (!param_type->is_same(func_type_ptr->get_member(idx).get_type().get()))
     {
-      leave_non_global_scopes();
+      leave_all_scopes();
       SemanticError::raise(n->get_loc(), "Definition of function '%s' with different parameter than declared function, expected '%s' but defined as '%s'",
                            func_name.c_str(),
                            func_type_ptr->get_member(idx).get_type()->as_str().c_str(),
@@ -361,7 +363,7 @@ void SemanticAnalysis::visit_function_definition(Node *n)
     }
     if (m_cur_symtab->lookup_local((*i)->get_str()) != nullptr)
     {
-      leave_non_global_scopes();
+      leave_all_scopes();
       SemanticError::raise(n->get_loc(), "Double declaration of variable %s in function '%s'",
                            (*i)->get_str().c_str(),
                            func_name.c_str());
@@ -400,7 +402,7 @@ void SemanticAnalysis::visit_function_declaration(Node *n)
   Symbol *func_symbol = m_cur_symtab->lookup_local(func_name);
   if (func_symbol != nullptr)
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "Double declaration of function '%s'", func_name.c_str());
   }
   // members are the parameters
@@ -468,7 +470,7 @@ void SemanticAnalysis::visit_return_expression_statement(Node *n)
     // n->set_type(std::shared_ptr<Type>(actual_return_type));
     return;
   }
-  leave_non_global_scopes();
+  leave_all_scopes();
   SemanticError::raise(n->get_loc(), "Incompatible return type. Expected '%s' but '%s' is returned",
                        expected_return_type->as_str().c_str(), actual_return_type->as_str().c_str());
   // TODO: implement
@@ -486,7 +488,7 @@ void SemanticAnalysis::visit_struct_type_definition(Node *n)
   if (defined_symbol != nullptr)
   {
     std::shared_ptr<Type> defined_type(defined_symbol->get_type());
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "Double declaration of variable '%s': previously as type '%s' and now as '%s' ",
                          struct_name.c_str(), defined_type->as_str().c_str(), type->as_str().c_str());
   }
@@ -555,7 +557,7 @@ void SemanticAnalysis::visit_unary_expression(Node *n)
   // before * and & cannot be literal values
   if ((unary_tag == TOK_ASTERISK || unary_tag == TOK_AMPERSAND) && !var->check_is_lvalue())
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "Invalid use of unary symbol '%c' before a literal value",
                          (unary_tag == TOK_ASTERISK) ? '*' : '&');
   }
@@ -564,7 +566,7 @@ void SemanticAnalysis::visit_unary_expression(Node *n)
   case TOK_ASTERISK:
     if (!var_type->is_pointer())
     {
-      leave_non_global_scopes();
+      leave_all_scopes();
       SemanticError::raise(n->get_loc(), "Invalid use of unary symbol '*' before a non-pointer type");
     }
     n->set_type(var_type->get_base_type());
@@ -584,7 +586,7 @@ void SemanticAnalysis::visit_unary_expression(Node *n)
   case TOK_MINUS:
     if (!var_type->is_int_variations())
     {
-      leave_non_global_scopes();
+      leave_all_scopes();
       SemanticError::raise(n->get_loc(), "Invalid use of unary operation '-' before type '%s'",
                            var_type->as_str().c_str());
     }
@@ -598,7 +600,7 @@ void SemanticAnalysis::visit_unary_expression(Node *n)
   case TOK_NOT:
     if (!var_type->is_int_variations())
     {
-      leave_non_global_scopes();
+      leave_all_scopes();
       SemanticError::raise(n->get_loc(), "Invalid use of unary operation '!' before type '%s'",
                            var_type->as_str().c_str());
     }
@@ -650,7 +652,7 @@ void SemanticAnalysis::visit_cast_expression(Node *n)
   }
   else
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "Incompatible types: attempting to cast type '%s' to '%s' ",
                          var_type->as_str().c_str(), cast_type->as_str().c_str());
   }
@@ -668,7 +670,7 @@ void SemanticAnalysis::visit_function_call_expression(Node *n)
   std::shared_ptr<Type> func_type(func_symbol->get_type());
   if (!func_type->is_function())
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "variable '%s' is not a function ",
                          func_symbol->get_name().c_str());
   }
@@ -682,7 +684,7 @@ void SemanticAnalysis::visit_function_call_expression(Node *n)
   int param_num = func_type->get_num_members();
   if (arg_num != param_num)
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "function call to '%s' has incorrect number of parameters: expected %d, but get %d",
                          func_symbol->get_name().c_str(),
                          param_num, arg_num);
@@ -713,7 +715,7 @@ void SemanticAnalysis::visit_field_ref_expression(Node *n)
   std::shared_ptr<Type> struct_type(struct_ref->get_type());
   if (!struct_type->is_struct())
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "Expect a struct for field reference but instead got '%s' ",
                          struct_type->as_str().c_str());
   }
@@ -732,7 +734,7 @@ void SemanticAnalysis::visit_indirect_field_ref_expression(Node *n)
   std::string struct_ident = n->get_kid(1)->get_str();
   if (!struct_ref_type->is_pointer() || !struct_ref_type->get_base_type()->is_struct())
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "Expect a struct pointer for indirect field reference but instead got '%s' ",
                          struct_ref_type->as_str().c_str());
   }
@@ -750,7 +752,7 @@ void SemanticAnalysis::visit_array_element_ref_expression(Node *n)
   std::shared_ptr<Type> array_type(array->get_type());
   if (!array_type->is_array() && !array_type->is_pointer())
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "type %s is given for indexing whereas type array is required", array_type->as_str().c_str());
   }
   // kid 2: int literal or variable reference: need to be integer
@@ -759,7 +761,7 @@ void SemanticAnalysis::visit_array_element_ref_expression(Node *n)
   std::shared_ptr<Type> idx_type(idx->get_type());
   if (!idx_type->is_int_variations())
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "type %s cannot be used as index for array", idx_type->as_str().c_str());
   }
   n->set_type(std::shared_ptr<Type>(array_type->get_base_type()));
@@ -774,7 +776,7 @@ void SemanticAnalysis::visit_variable_ref(Node *n)
   Symbol *var_symbol = m_cur_symtab->lookup_recursive(var_name);
   if (var_symbol == nullptr)
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "the variable reference '%s' is never declared or defined ", var_name.c_str());
   }
   n->set_symbol(var_symbol);
@@ -861,7 +863,7 @@ void SemanticAnalysis::visit_assign_operation(Node *n)
   // check 1: LHS must be lvalue
   if (!LHS->check_is_lvalue())
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "the left hand side of assigment is not a lvalue");
   }
   std::shared_ptr<Type> lsymbol_type(LHS->get_type());
@@ -901,12 +903,12 @@ void SemanticAnalysis::visit_relational_operation(Node *n)
   }
   else
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "%s type symbol cannot be compared", lsymbol_type->as_str().c_str());
   }
   if (!compatible)
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "Incompatible types (%s, %s) in comparison", lsymbol_type->as_str().c_str(),
                          rsymbol_type.get()->as_str().c_str());
   }
@@ -940,7 +942,7 @@ void SemanticAnalysis::visit_plus_minus_operation(Node *n)
   // check 4: if LHS is pointer
   else
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "data types '%s' and '%s' cannot perform arithmatic operations + or -",
                          lsymbol_type->as_str().c_str(), rsymbol_type->as_str().c_str());
   }
@@ -963,7 +965,7 @@ void SemanticAnalysis::visit_other_arithmetic_operation(Node *n)
   }
   else
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "data types '%s' and '%s' cannot perform arithmatic operations *, / or %%",
                          lsymbol_type->as_str().c_str(), rsymbol_type->as_str().c_str());
   }
@@ -986,7 +988,7 @@ void SemanticAnalysis::visit_logical_operation(Node *n)
   }
   else
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "data types '%s' and '%s' cannot perform logical operations || or &&",
                          lsymbol_type->as_str().c_str(), rsymbol_type->as_str().c_str());
   }
@@ -1022,7 +1024,7 @@ void SemanticAnalysis::visit_while_statement(Node *n)
   visit(condition);
   if (!condition->get_type()->is_int_variations() && !condition->get_type()->is_pointer())
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "Unable to evaluate the statement inside while conditional because it is of type '%s' ",
                          condition->get_type()->as_str().c_str());
   }
@@ -1050,7 +1052,7 @@ void SemanticAnalysis::visit_do_while_statement(Node *n)
   visit(condition);
   if (!condition->get_type()->is_int_variations() && !condition->get_type()->is_pointer())
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "Unable to evaluate the statement inside while conditional because it is of type '%s' ",
                          condition->get_type()->as_str().c_str());
   }
@@ -1071,7 +1073,7 @@ void SemanticAnalysis::visit_for_statement(Node *n)
   visit(condition);
   if (!condition->get_type()->is_int_variations() && !condition->get_type()->is_pointer())
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "Unable to evaluate the statement inside for conditional because it is of type '%s' ",
                          condition->get_type()->as_str().c_str());
   }
@@ -1093,7 +1095,7 @@ void SemanticAnalysis::visit_if_statement(Node *n)
   visit(condition);
   if (!condition->get_type()->is_int_variations() && !condition->get_type()->is_pointer())
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "Unable to evaluate the statement inside if conditional because it is of type '%s' ",
                          condition->get_type()->as_str().c_str());
   }
@@ -1192,12 +1194,12 @@ std::shared_ptr<Type> SemanticAnalysis::apply_assignment_rule(Node *n, std::shar
   }
   else
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "%s type symbol cannot be assigned", lsymbol_type->as_str().c_str());
   }
   if (!compatible)
   {
-    leave_non_global_scopes();
+    leave_all_scopes();
     SemanticError::raise(n->get_loc(), "Incompatible types (%s, %s) in assignment", lsymbol_type->as_str().c_str(),
                          rsymbol_type.get()->as_str().c_str());
   }
@@ -1207,6 +1209,7 @@ std::shared_ptr<Type> SemanticAnalysis::apply_assignment_rule(Node *n, std::shar
 void SemanticAnalysis::enter_scope()
 {
   SymbolTable *scope = new SymbolTable(m_cur_symtab);
+  m_symtabs.push_back(scope);
   m_cur_symtab = scope;
 }
 
@@ -1218,9 +1221,9 @@ void SemanticAnalysis::leave_scope()
   assert(m_cur_symtab != nullptr);
 }
 
-void SemanticAnalysis::leave_non_global_scopes()
+void SemanticAnalysis::leave_all_scopes()
 {
-  while (m_cur_symtab->get_parent() != nullptr)
+  while (m_cur_symtab != nullptr)
   {
     SymbolTable *old_scope = m_cur_symtab;
     m_cur_symtab = m_cur_symtab->get_parent();

@@ -12,10 +12,11 @@ class SemanticAnalysis : public ASTVisitor
 {
 private:
   SymbolTable *m_global_symtab, *m_cur_symtab;
+  std::vector<SymbolTable *> &m_symtabs;
   std::map<std::string, Node *> *m_string_literal_map;
 
 public:
-  SemanticAnalysis();
+  SemanticAnalysis(std::vector<SymbolTable *> &symtabs);
   virtual ~SemanticAnalysis();
 
   SymbolTable *get_global_symtab() { return m_global_symtab; }
@@ -52,7 +53,7 @@ private:
   void visit_declarator_item(Node *n, std::shared_ptr<Type> type);
   void enter_scope();
   void leave_scope();
-  void leave_non_global_scopes();
+  void leave_all_scopes();
 
   void visit_assign_operation(Node *n);
   void visit_relational_operation(Node *n);

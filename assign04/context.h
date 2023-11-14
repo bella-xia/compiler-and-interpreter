@@ -34,6 +34,7 @@ class Context
 {
 private:
   Node *m_ast;
+  std::vector<SymbolTable *> m_symtabs;
   SemanticAnalysis m_sema;
 
   // copy ctor and assignment operator not allowed

@@ -37,13 +37,18 @@
 #include "context.h"
 
 Context::Context()
-    : m_ast(nullptr)
+    : m_ast(nullptr), m_symtabs(std::vector<SymbolTable *>()),
+      m_sema(SemanticAnalysis(m_symtabs))
 {
 }
 
 Context::~Context()
 {
   delete m_ast;
+  for (SymbolTable *ele : m_symtabs)
+  {
+    delete ele;
+  }
 }
 
 struct CloseFile
