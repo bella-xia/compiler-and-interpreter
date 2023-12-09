@@ -80,8 +80,8 @@ void LocalStorageAllocation::visit_function_definition(Node *n)
     if (m_next_mreg < (int)m_regs.size())
     {
       var.first->set_mreg(m_regs[m_next_mreg]);
-      std::cout << "allocate machine register " << m_regs[m_next_mreg] << " to variable '";
-      std::cout << var.first->get_name() << "' (vr" << var.first->get_vreg() << ")" << std::endl;
+      std::cout << "/* allocate machine register " << m_regs[m_next_mreg] << " to variable '";
+      std::cout << var.first->get_name() << "' (vr" << var.first->get_vreg() << ") */" << std::endl;
       m_next_mreg++;
     }
     else
