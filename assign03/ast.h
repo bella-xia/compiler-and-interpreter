@@ -25,7 +25,8 @@
 #include "treeprint.h"
 class Node;
 
-enum ASTNodeTag {
+enum ASTNodeTag
+{
   AST_UNIT = 10000,
   AST_VARIABLE_DECLARATION,
   AST_STRUCT_TYPE,
@@ -54,7 +55,7 @@ enum ASTNodeTag {
   AST_FIELD_DEFINITION_LIST,
   AST_BINARY_EXPRESSION,
   AST_UNARY_EXPRESSION,
-  AST_POSTFIX_EXPRESSION,      // like AST_UNARY_EXPRESSION, but for postfix operators
+  AST_POSTFIX_EXPRESSION, // like AST_UNARY_EXPRESSION, but for postfix operators
   AST_CONDITIONAL_EXPRESSION,
   AST_CAST_EXPRESSION,
   AST_FUNCTION_CALL_EXPRESSION,
@@ -67,13 +68,13 @@ enum ASTNodeTag {
   AST_IMPLICIT_CONVERSION, // semantic analysis can add these to mark locations of implicit type conversions
 };
 
-class ASTTreePrint : public ParseTreePrint {
+class ASTTreePrint : public ParseTreePrint
+{
 public:
   ASTTreePrint();
   virtual ~ASTTreePrint();
 
   virtual std::string node_tag_to_string(int tag) const;
 };
-
 
 #endif // AST_H
