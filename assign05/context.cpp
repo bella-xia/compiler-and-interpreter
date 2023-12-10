@@ -210,6 +210,7 @@ void Context::highlevel_codegen(ModuleCollector *module_collector, bool optimize
         bool modified = false;
         int prev_length = 0;
         int idx = 0;
+        int stack_idx = child->get_symbol()->get_optimized_stack_size();
         do
         {
           HighLevelControlFlowGraphBuilder hl_cfg_builder(cur_hl_iseq);
@@ -224,10 +225,17 @@ void Context::highlevel_codegen(ModuleCollector *module_collector, bool optimize
           cur_hl_iseq = cfg->create_instruction_sequence();
 
         } while ((modified || prev_length > (int)cur_hl_iseq->get_length()) && idx < 10);
-        if (idx == 9)
-        {
-          std::cout << "reacehd the last iter" << std::endl;
-        }
+
+        HighLevelControlFlowGraphBuilder hl_cfg_builder(cur_hl_iseq);
+        std::shared_ptr<ControlFlowGraph> cfg = hl_cfg_builder.build();
+        LocalMregAssignmentHighLevel hl_opts(cfg);
+        hl_opts.set_stack_idx(stack_idx);
+        cfg = hl_opts.transform_cfg();
+        // convert the transformed high-level CFG back to an Instruction sequence
+        // module_collector->collect_function(fn_name, cur_hl_iseq);
+        stack_idx = hl_opts.get_max_stack_idx();
+        child->get_symbol()->set_total_optimized_stack_size(stack_idx);
+        cur_hl_iseq = cfg->create_instruction_sequence();
       }
 
       // store a pointer to the function definition AST in the

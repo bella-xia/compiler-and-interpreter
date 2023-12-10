@@ -10,8 +10,9 @@ Symbol::Symbol(SymbolKind kind, const std::string &name, const std::shared_ptr<T
     : m_kind(kind), m_name(name), m_type(type), m_symtab(symtab),
       m_is_defined(is_defined),
       m_is_vreg(type->is_integral() || type->is_pointer()), m_has_function_vreg(false), m_has_mreg(false),
-      m_vreg(0), m_function_vreg(0), m_next_vreg(0), m_max_vreg(0),
-      m_offset(0), m_stack_size(0), m_mreg("")
+      m_vreg(0), m_function_vreg(0), m_next_vreg(0), m_max_vreg(0), m_total_optimized_stack_size(0),
+      m_offset(0), m_stack_size(0), m_mreg(""), m_optimized_stack(std::vector<int>()),
+      m_callee_mreg_used(std::vector<std::string>())
 {
 }
 
@@ -29,6 +30,11 @@ void Symbol::set_function_vreg(int vreg)
 {
   m_has_function_vreg = true;
   m_function_vreg = vreg;
+}
+
+void Symbol::set_optimized_stack(int vreg)
+{
+  m_optimized_stack.push_back(vreg);
 }
 
 void Symbol::set_offset(unsigned offset)
@@ -59,6 +65,17 @@ int Symbol::get_function_vreg() const
 {
   assert(m_has_function_vreg);
   return m_function_vreg;
+}
+
+int Symbol::get_optimized_stack(int idx) const
+{
+  assert((int)m_optimized_stack.size() > idx);
+  return m_optimized_stack.at(idx);
+}
+
+std::vector<int> Symbol::get_optimized_stack() const
+{
+  return m_optimized_stack;
 }
 
 unsigned Symbol::get_offset() const

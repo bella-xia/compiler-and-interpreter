@@ -1,3 +1,4 @@
+
 #include <cassert>
 #include "node.h"
 #include "instruction.h"
@@ -15,7 +16,7 @@ HighLevelOpcode get_opcode(HighLevelOpcode base_opcode, const std::shared_ptr<Ty
 {
   if (type->is_basic())
     return static_cast<HighLevelOpcode>(int(base_opcode) + int(type->get_basic_type_kind()));
-  else if (type->is_pointer())
+  else if (type->is_pointer() || type->is_array())
     return static_cast<HighLevelOpcode>(int(base_opcode) + int(BasicTypeKind::LONG));
   else
     RuntimeError::raise("attempt to use type '%s' as data in opcode selection", type->as_str().c_str());
@@ -140,8 +141,13 @@ void HighLevelCodegen::visit_function_parameter_list(Node *n)
       // std::shared_ptr<Type> dest_type((*i)->get_function_type());
       // Operand orig_operand((*i)->get_operand());
       // Operand modified_op(check_types(orig_operand, original_type, dest_type));
+      Operand param_op = (*i)->get_operand();
+      if ((*i)->has_symbol() && (*i)->get_symbol()->has_mreg())
+      {
+        param_op.set_comment((*i)->get_symbol()->get_mreg());
+      }
       HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, (*i)->get_type());
-      m_hl_iseq->append(new Instruction(mov_opcode, (*i)->get_operand(), (*i)->get_function_operand()));
+      m_hl_iseq->append(new Instruction(mov_opcode, param_op, (*i)->get_function_operand()));
     }
   }
   // TODO: implement
@@ -301,11 +307,22 @@ void HighLevelCodegen::visit_if_else_statement(Node *n)
 
 void HighLevelCodegen::visit_binary_expression(Node *n)
 {
-  visit_children(n);
+  Node *LHS = n->get_kid(1);
+  Node *RHS = n->get_kid(2);
   int nkid = n->get_num_kids();
   assert(nkid == 3);
   Node *operation = n->get_kid(0);
   int operator_tag = operation->get_tag();
+  if (operator_tag == TOK_ASSIGN)
+  {
+    visit(RHS);
+    visit(LHS);
+  }
+  else
+  {
+    visit(LHS);
+    visit(RHS);
+  }
   switch (operator_tag)
   {
   case TOK_ASSIGN:
@@ -411,6 +428,10 @@ void HighLevelCodegen::visit_function_call_expression(Node *n)
         std::shared_ptr<Type> dest_type((*i)->get_function_type());
         Operand orig_operand(Operand(Operand::VREG, (*i)->get_operand().get_base_reg()));
         Operand modified_op(check_types(orig_operand, check_type, dest_type));
+        if ((*i)->has_symbol() && (*i)->get_symbol()->has_mreg())
+        {
+          modified_op.set_comment((*i)->get_symbol()->get_mreg());
+        }
         HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, dest_type);
         m_hl_iseq->append(new Instruction(mov_opcode, Operand(Operand::VREG, start_arg_vreg), modified_op));
       }
@@ -451,7 +472,12 @@ void HighLevelCodegen::visit_field_ref_expression(Node *n)
   m_hl_iseq->append(new Instruction(mov_opcode, dest1, Operand(Operand::IMM_IVAL, component_offset)));
   Operand dest2(Operand::VREG, next_temp_vreg());
   HighLevelOpcode add_opcode = get_opcode(HINS_add_b, component_type_pt);
-  m_hl_iseq->append(new Instruction(add_opcode, dest2, Operand(Operand::VREG, struct_var_opt.get_base_reg()),
+  Operand struct_op = Operand(Operand::VREG, struct_var_opt.get_base_reg());
+  if (struct_var_opt.has_comment())
+  {
+    struct_op.set_comment(struct_var_opt.get_comment());
+  }
+  m_hl_iseq->append(new Instruction(add_opcode, dest2, struct_op,
                                     dest1));
   n->set_operand(dest2.to_memref());
   // TODO: implement
@@ -500,7 +526,12 @@ void HighLevelCodegen::visit_array_element_ref_expression(Node *n)
                                     Operand(Operand::IMM_IVAL, size)));
   Operand dest2(Operand::VREG, next_temp_vreg());
   HighLevelOpcode add_opcode = get_opcode(HINS_add_b, idx_type);
-  m_hl_iseq->append(new Instruction(add_opcode, dest2, Operand(Operand::VREG, arr->get_operand().get_base_reg()),
+  Operand arr_op = Operand(Operand::VREG, arr->get_operand().get_base_reg());
+  if (arr->get_operand().has_comment())
+  {
+    arr_op.set_comment(arr->get_operand().get_comment());
+  }
+  m_hl_iseq->append(new Instruction(add_opcode, dest2, arr_op,
                                     dest1));
   // Operand dest3(Operand::VREG, next_temp_vreg());
   // HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, n->get_type());
@@ -516,12 +547,12 @@ void HighLevelCodegen::visit_variable_ref(Node *n)
   Symbol *ref_symbol = n->get_symbol();
   if (ref_symbol->is_vreg())
   {
-    Operand var_vreg = Operand(Operand::VREG, ref_symbol->get_vreg());
+    Operand set_op = Operand(Operand::VREG, ref_symbol->get_vreg());
     if (ref_symbol->has_mreg())
     {
-      var_vreg.set_comment(ref_symbol->get_mreg());
+      set_op.set_comment(ref_symbol->get_mreg());
     }
-    n->set_operand(var_vreg);
+    n->set_operand(set_op);
   }
   else if (ref_symbol->is_offset())
   {
@@ -580,11 +611,25 @@ void HighLevelCodegen::visit_assign_operation(Node *n)
   HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, n->get_type());
   if (LHS->get_type()->is_pointer() && RHS->get_type()->is_array())
   {
-    m_hl_iseq->append(new Instruction(mov_opcode, LHS_op, Operand(Operand::VREG, RHS_op.get_base_reg())));
+    Operand RHS_op_vreg = Operand(Operand::VREG, RHS_op.get_base_reg());
+    if (RHS_op.has_comment())
+    {
+      RHS_op_vreg.set_comment(RHS_op.get_comment());
+    }
+    m_hl_iseq->append(new Instruction(mov_opcode, LHS_op, RHS_op_vreg));
   }
   else
   {
-    m_hl_iseq->append(new Instruction(mov_opcode, LHS_op, RHS_op));
+    if (LHS_op.get_kind() == Operand::VREG_MEM && RHS_op.get_kind() == Operand::VREG_MEM)
+    {
+      Operand temp(Operand::VREG, next_temp_vreg());
+      m_hl_iseq->append(new Instruction(mov_opcode, temp, RHS_op));
+      m_hl_iseq->append(new Instruction(mov_opcode, LHS_op, temp));
+    }
+    else
+    {
+      m_hl_iseq->append(new Instruction(mov_opcode, LHS_op, RHS_op));
+    }
   }
   n->set_operand(LHS_op);
 }

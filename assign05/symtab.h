@@ -24,9 +24,11 @@ private:
   std::shared_ptr<Type> m_type;
   SymbolTable *m_symtab;
   bool m_is_defined, m_is_vreg, m_has_function_vreg, m_has_mreg;
-  int m_vreg, m_function_vreg, m_next_vreg, m_max_vreg;
+  int m_vreg, m_function_vreg, m_next_vreg, m_max_vreg, m_total_optimized_stack_size;
   unsigned m_offset, m_stack_size;
   std::string m_mreg;
+  std::vector<int> m_optimized_stack;
+  std::vector<std::string> m_callee_mreg_used;
 
   // value semantics prohibited
   Symbol(const Symbol &);
@@ -49,11 +51,19 @@ public:
 
   void set_vreg(int vreg);
   void set_function_vreg(int vreg);
+  void set_optimized_stack(int vreg);
+  void set_used_callee_mreg(std::string mreg) { m_callee_mreg_used.push_back(mreg); }
+  void set_total_optimized_stack_size(int stack_size) { m_total_optimized_stack_size = stack_size; }
   void set_mreg(const std::string &mreg);
   void set_offset(unsigned offset);
 
   int get_vreg() const;
   int get_function_vreg() const;
+  int get_optimized_stack(int idx) const;
+  int get_total_optimized_stack_size() const { return m_total_optimized_stack_size; }
+  std::vector<int> get_optimized_stack() const;
+  std::vector<std::string> get_callee_mreg_used() const { return m_callee_mreg_used; }
+  int get_optimized_stack_size() const { return m_optimized_stack.size(); }
   std::string get_mreg() const;
   unsigned get_offset() const;
 

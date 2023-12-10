@@ -86,11 +86,23 @@ const std::map<int, enum MachineReg> TO_REG = {
     {6, MREG_R9},
 };
 
-LowLevelCodeGen::LowLevelCodeGen(bool optimize)
-    : m_total_memory_storage(0),
-      m_vreg_storage_start(0), m_stack_storage_start(0),
-      m_residual(0), m_optimize(optimize),
-      hl_format(HighLevelFormatter())
+const std::map<std::string, enum MachineReg> STR_TO_REG = {
+    {"%rbx", MREG_RBX},
+    {"%r12", MREG_R12},
+    {"%r13", MREG_R13},
+    {"%r14", MREG_R14},
+    {"%r15", MREG_R15},
+    {"%r8", MREG_R8},
+    {"%r9", MREG_R9},
+    {"%rcx", MREG_RCX},
+    {"%rdx", MREG_RDX},
+    {"%rsi", MREG_RSI},
+    {"%rdi", MREG_RDI}};
+
+LowLevelCodeGen::LowLevelCodeGen(bool optimize) : m_total_memory_storage(0),
+                                                  m_vreg_storage_start(0), m_stack_storage_start(0),
+                                                  m_residual(0), m_optimize(optimize), hl_format(HighLevelFormatter()),
+                                                  m_callee_mregs(std::vector<std::string>())
 {
 }
 
@@ -101,28 +113,28 @@ LowLevelCodeGen::~LowLevelCodeGen()
 std::shared_ptr<InstructionSequence> LowLevelCodeGen::generate(const std::shared_ptr<InstructionSequence> &hl_iseq)
 {
   // TODO: if optimizations are enabled, could do analysis/transformation of high-level code
-  Node *funcdef_ast = hl_iseq->get_funcdef_ast();
+  // Node *funcdef_ast = hl_iseq->get_funcdef_ast();
   std::shared_ptr<InstructionSequence> cur_hl_iseq(hl_iseq);
-  if (m_optimize)
-  {
-    // High-level optimization
+  // if (m_optimize)
+  // {
+  //   // High-level optimization
 
-    // Create a control-flow graph representation of the high-level code
+  //   // Create a control-flow graph representation of the high-level code
 
-    HighLevelControlFlowGraphBuilder hl_cfg_builder(cur_hl_iseq);
-    std::shared_ptr<ControlFlowGraph> cfg = hl_cfg_builder.build();
+  //   HighLevelControlFlowGraphBuilder hl_cfg_builder(cur_hl_iseq);
+  //   std::shared_ptr<ControlFlowGraph> cfg = hl_cfg_builder.build();
 
-    // Do local optimizations
-    LocalOptimizationHighLevel hl_opts(cfg);
-    cfg = hl_opts.transform_cfg();
+  //   // Do local optimizations
+  //   LocalOptimizationHighLevel hl_opts(cfg);
+  //   cfg = hl_opts.transform_cfg();
 
-    // convert the transformed high-level CFG back to an Instruction sequence
-    cur_hl_iseq = cfg->create_instruction_sequence();
+  //   // convert the transformed high-level CFG back to an Instruction sequence
+  //   cur_hl_iseq = cfg->create_instruction_sequence();
 
-    // the function definition AST might have information needed for low-level
-    // code generation
-    cur_hl_iseq->set_funcdef_ast(funcdef_ast);
-  }
+  //   // the function definition AST might have information needed for low-level
+  //   // code generation
+  //   cur_hl_iseq->set_funcdef_ast(funcdef_ast);
+  // }
 
   std::shared_ptr<InstructionSequence> ll_iseq = translate_hl_to_ll(cur_hl_iseq);
 
@@ -140,6 +152,7 @@ std::shared_ptr<InstructionSequence> LowLevelCodeGen::translate_hl_to_ll(const s
   // there (for example, about the amount of memory needed for local storage,
   // maximum number of virtual registers used, etc.)
   Node *funcdef_ast = hl_iseq->get_funcdef_ast();
+  Symbol *func_symbol = funcdef_ast->get_symbol();
   assert(funcdef_ast != nullptr);
 
   // It's not a bad idea to store the pointer to the function definition AST
@@ -152,8 +165,8 @@ std::shared_ptr<InstructionSequence> LowLevelCodeGen::translate_hl_to_ll(const s
   // *must* have storage allocated in memory (e.g., arrays), and also
   // any additional memory that is needed for virtual registers,
   // spilled machine registers, etc.
-  std::string func_name = funcdef_ast->get_symbol()->get_name();
-  int stack_storage = funcdef_ast->get_symbol()->get_stack_size();
+  std::string func_name = func_symbol->get_name();
+  int stack_storage = func_symbol->get_stack_size();
   int offset = (stack_storage % 8 == 0) ? 0 : 8 - stack_storage % 8;
   m_stack_storage_start = -1 * (stack_storage + offset);
   if (stack_storage > 0)
@@ -165,12 +178,17 @@ std::shared_ptr<InstructionSequence> LowLevelCodeGen::translate_hl_to_ll(const s
                                                        func_name.c_str(), m_stack_storage_start);
     std::cout << mem_start_offset_str << std::endl;
   }
-  int max_vreg_used = funcdef_ast->get_symbol()->get_max_vreg();
+  int max_vreg_used = func_symbol->get_max_vreg();
+  int vreg_alloc_size = (max_vreg_used - 9) * 8;
+  if (m_optimize)
+  {
+    vreg_alloc_size = func_symbol->get_total_optimized_stack_size() * 8;
+  }
   std::string vreg_storage_str = cpputil::format("/* Function '%s' uses %d total bytes of memory storage for vregs */",
-                                                 func_name.c_str(), (max_vreg_used - 9) * 8);
+                                                 func_name.c_str(), vreg_alloc_size);
   std::cout << vreg_storage_str << std::endl;
 
-  m_total_memory_storage = (max_vreg_used - 9) * 8 + -m_stack_storage_start; // FIXME: determine how much memory storage on the stack is needed
+  m_total_memory_storage = vreg_alloc_size + -m_stack_storage_start; // FIXME: determine how much memory storage on the stack is needed
   m_vreg_storage_start = -m_total_memory_storage;
   std::string vreg_start_offset_str = cpputil::format("/* Function '%s': placing vreg storage at offset %d from %%rbp */",
                                                       func_name.c_str(), m_vreg_storage_start);
@@ -179,10 +197,23 @@ std::shared_ptr<InstructionSequence> LowLevelCodeGen::translate_hl_to_ll(const s
   // stack pointer (%rsp) will contain an address that is a multiple of 16.
   // If the total memory storage required is not a multiple of 16, add to
   // it so that it is.
-  if ((m_total_memory_storage) % 16 != 0)
+  if (m_optimize)
   {
-    m_residual = 16 - (m_total_memory_storage % 16);
-    m_total_memory_storage += m_residual;
+    m_callee_mregs = funcdef_ast->get_symbol()->get_callee_mreg_used();
+    int total_stack_size = m_total_memory_storage + (int)m_callee_mregs.size() * 8;
+    if (total_stack_size % 16 != 0)
+    {
+      m_residual = 16 - (total_stack_size % 16);
+      m_total_memory_storage += m_residual;
+    }
+  }
+  else
+  {
+    if (m_total_memory_storage % 16 != 0)
+    {
+      m_residual = 16 - (m_total_memory_storage % 16);
+      m_total_memory_storage += m_residual;
+    }
   }
 
   std::cout << "/* Function '" << func_name << "': " << m_total_memory_storage << " bytes allocated in stack frame */" << std::endl;
@@ -298,19 +329,43 @@ void LowLevelCodeGen::translate_instruction(Instruction *hl_ins, const std::shar
 
   if (hl_opcode == HINS_enter)
   {
-    // Function prologue: this will create an ABI-compliant stack frame.
-    // The local variable area is *below* the address in %rbp, and local storage
-    // can be accessed at negative offsets from %rbp. For example, the topmost
-    // 4 bytes in the local storage area are at -4(%rbp).
-    append_first_instruction(hl_ins, new Instruction(MINS_PUSHQ, Operand(Operand::MREG64, MREG_RBP)), ll_iseq);
-    ll_iseq->append(new Instruction(MINS_MOVQ, Operand(Operand::MREG64, MREG_RSP), Operand(Operand::MREG64, MREG_RBP)));
-    if (m_total_memory_storage > 0)
-      ll_iseq->append(new Instruction(MINS_SUBQ, Operand(Operand::IMM_IVAL, m_total_memory_storage), Operand(Operand::MREG64, MREG_RSP)));
+    if (m_optimize)
+    {
 
-    // save callee-saved registers (if any)
-    // TODO: if you allocated callee-saved registers as storage for local variables,
-    //       emit pushq instructions to save their original values
+      if ((int)m_callee_mregs.size() > 0)
+      {
+        MachineReg mreg = STR_TO_REG.find(m_callee_mregs.at(0))->second;
+        append_first_instruction(hl_ins, new Instruction(MINS_PUSHQ, Operand(Operand::MREG64, mreg)), ll_iseq);
+        for (int i = 1; i < (int)m_callee_mregs.size(); ++i)
+        {
+          mreg = STR_TO_REG.find(m_callee_mregs.at(i))->second;
+          ll_iseq->append(new Instruction(MINS_PUSHQ, Operand(Operand::MREG64, mreg)));
+        }
+        ll_iseq->append(new Instruction(MINS_PUSHQ, Operand(Operand::MREG64, MREG_RBP)));
+      }
+      else
+      {
+        append_first_instruction(hl_ins, new Instruction(MINS_PUSHQ, Operand(Operand::MREG64, MREG_RBP)), ll_iseq);
+      }
+      ll_iseq->append(new Instruction(MINS_MOVQ, Operand(Operand::MREG64, MREG_RSP), Operand(Operand::MREG64, MREG_RBP)));
+      if (m_total_memory_storage > 0)
+        ll_iseq->append(new Instruction(MINS_SUBQ, Operand(Operand::IMM_IVAL, m_total_memory_storage), Operand(Operand::MREG64, MREG_RSP)));
+    }
+    else
+    {
+      // Function prologue: this will create an ABI-compliant stack frame.
+      // The local variable area is *below* the address in %rbp, and local storage
+      // can be accessed at negative offsets from %rbp. For example, the topmost
+      // 4 bytes in the local storage area are at -4(%rbp).
+      append_first_instruction(hl_ins, new Instruction(MINS_PUSHQ, Operand(Operand::MREG64, MREG_RBP)), ll_iseq);
+      ll_iseq->append(new Instruction(MINS_MOVQ, Operand(Operand::MREG64, MREG_RSP), Operand(Operand::MREG64, MREG_RBP)));
+      if (m_total_memory_storage > 0)
+        ll_iseq->append(new Instruction(MINS_SUBQ, Operand(Operand::IMM_IVAL, m_total_memory_storage), Operand(Operand::MREG64, MREG_RSP)));
 
+      // save callee-saved registers (if any)
+      // TODO: if you allocated callee-saved registers as storage for local variables,
+      //       emit pushq instructions to save their original values
+    }
     return;
   }
 
@@ -331,7 +386,14 @@ void LowLevelCodeGen::translate_instruction(Instruction *hl_ins, const std::shar
     {
       append_first_instruction(hl_ins, new Instruction(MINS_POPQ, Operand(Operand::MREG64, MREG_RBP)), ll_iseq);
     }
-
+    if (m_optimize)
+    {
+      for (int i = (int)m_callee_mregs.size() - 1; i >= 0; --i)
+      {
+        MachineReg mreg = STR_TO_REG.find(m_callee_mregs.at(i))->second;
+        ll_iseq->append(new Instruction(MINS_POPQ, Operand(Operand::MREG64, mreg)));
+      }
+    }
     return;
   }
   if (hl_opcode == HINS_ret)
@@ -665,6 +727,31 @@ Operand LowLevelCodeGen::convert_low_level_operand(Operand hl_operand, int opera
                                                    bool &next_temp_reg, bool &first_instruction, bool is_src,
                                                    Instruction *hl_ins, const std::shared_ptr<InstructionSequence> &ll_iseq)
 {
+  if (m_optimize && hl_operand.has_comment())
+  {
+    if (STR_TO_REG.find(hl_operand.get_comment()) == STR_TO_REG.end())
+    {
+      // memory
+      std::string index_idx = hl_operand.get_comment();
+      std::size_t pos = index_idx.find("_"); // position of "live" in str
+      std::string str3 = index_idx.substr(pos + 1);
+      // std::cout << "index is " << str3 << std::endl;
+      int idx = std::stoi(str3);
+      int offset = m_vreg_storage_start + idx * 8;
+      return Operand(Operand::MREG64_MEM_OFF, MREG_RBP, offset);
+    }
+    // mreg
+    MachineReg cur_mreg = STR_TO_REG.find(hl_operand.get_comment())->second;
+    if (hl_operand.get_kind() == Operand::VREG)
+    {
+      Operand::Kind kind = select_mreg_kind(operand_size);
+      return Operand(kind, cur_mreg);
+    }
+    else if (hl_operand.get_kind() == Operand::VREG_MEM)
+    {
+      return Operand(Operand::MREG64_MEM, cur_mreg);
+    }
+  }
   if (hl_operand.get_kind() == Operand::VREG || hl_operand.get_kind() == Operand::VREG_MEM)
   {
     int base_reg = hl_operand.get_base_reg();

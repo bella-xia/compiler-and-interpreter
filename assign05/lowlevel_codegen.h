@@ -18,6 +18,7 @@ private:
   int m_total_memory_storage, m_vreg_storage_start, m_stack_storage_start, m_residual;
   bool m_optimize;
   HighLevelFormatter hl_format;
+  std::vector<std::string> m_callee_mregs;
 
 public:
   LowLevelCodeGen(bool optimize);

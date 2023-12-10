@@ -1090,7 +1090,7 @@ void SemanticAnalysis::visit_if_statement(Node *n)
   assert(nkid == 2 || nkid == 3);
   Node *condition = n->get_kid(0);
   Node *if_stmt = n->get_kid(1);
-  assert(if_stmt->get_tag() == AST_STATEMENT_LIST);
+  // assert(if_stmt->get_tag() == AST_STATEMENT_LIST);
 
   visit(condition);
   if (!condition->get_type()->is_int_variations() && !condition->get_type()->is_pointer())

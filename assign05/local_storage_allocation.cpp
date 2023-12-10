@@ -9,7 +9,7 @@
 #include "local_storage_allocation.h"
 
 LocalStorageAllocation::LocalStorageAllocation()
-    : m_total_local_storage(0U), m_next_vreg(VREG_FIRST_LOCAL), m_next_mreg(0)
+    : m_total_local_storage(0U), m_next_vreg(VREG_FIRST_LOCAL)
 {
 }
 
@@ -74,22 +74,35 @@ void LocalStorageAllocation::visit_function_definition(Node *n)
             {
               return a.second > b.second; // Change to < for ascending order
             });
-
+  int m_next_mreg = 0;
+  int m_next_stack = 0;
   for (auto var : mapVector)
   {
     if (m_next_mreg < (int)m_regs.size())
     {
       var.first->set_mreg(m_regs[m_next_mreg]);
+      func_symbol->set_used_callee_mreg(m_regs[m_next_mreg]);
       std::cout << "/* allocate machine register " << m_regs[m_next_mreg] << " to variable '";
       std::cout << var.first->get_name() << "' (vr" << var.first->get_vreg() << ") */" << std::endl;
       m_next_mreg++;
     }
     else
     {
-      break;
+      func_symbol->set_optimized_stack(var.first->get_vreg());
+      var.first->set_mreg("stack_" + std::to_string(m_next_stack));
+      m_next_stack++;
     }
   }
-
+  std::vector<int> in_stack = func_symbol->get_optimized_stack();
+  std::string vreg_in_stack_list = "";
+  if ((int)in_stack.size() != 0)
+  {
+    for (int i = 0; i < (int)in_stack.size(); ++i)
+    {
+      vreg_in_stack_list += "vr" + std::to_string(in_stack.at(i)) + ", ";
+    }
+    std::cout << "/* allocated in stack: " << vreg_in_stack_list << "*/" << std::endl;
+  }
   // TODO: implement
 }
 
@@ -108,8 +121,10 @@ void LocalStorageAllocation::visit_function_parameter_list(Node *n)
       param_symbol->set_function_vreg(start_vreg_ars);
       param_symbol->set_vreg(m_next_vreg);
       std::cout << "/* variable '" << param_symbol->get_name() << "' allocated vreg " << m_next_vreg << " */" << std::endl;
+      Operand param_operand = Operand(Operand::VREG, start_vreg_ars);
       (*i)->set_function_operand(Operand(Operand::VREG, start_vreg_ars));
       (*i)->set_operand(Operand(Operand::VREG, m_next_vreg));
+      m_var_map.insert({param_symbol, 0});
       start_vreg_ars++;
       m_next_vreg++;
     }
