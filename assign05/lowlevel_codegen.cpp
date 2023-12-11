@@ -115,27 +115,6 @@ std::shared_ptr<InstructionSequence> LowLevelCodeGen::generate(const std::shared
   // TODO: if optimizations are enabled, could do analysis/transformation of high-level code
   // Node *funcdef_ast = hl_iseq->get_funcdef_ast();
   std::shared_ptr<InstructionSequence> cur_hl_iseq(hl_iseq);
-  // if (m_optimize)
-  // {
-  //   // High-level optimization
-
-  //   // Create a control-flow graph representation of the high-level code
-
-  //   HighLevelControlFlowGraphBuilder hl_cfg_builder(cur_hl_iseq);
-  //   std::shared_ptr<ControlFlowGraph> cfg = hl_cfg_builder.build();
-
-  //   // Do local optimizations
-  //   LocalOptimizationHighLevel hl_opts(cfg);
-  //   cfg = hl_opts.transform_cfg();
-
-  //   // convert the transformed high-level CFG back to an Instruction sequence
-  //   cur_hl_iseq = cfg->create_instruction_sequence();
-
-  //   // the function definition AST might have information needed for low-level
-  //   // code generation
-  //   cur_hl_iseq->set_funcdef_ast(funcdef_ast);
-  // }
-
   std::shared_ptr<InstructionSequence> ll_iseq = translate_hl_to_ll(cur_hl_iseq);
 
   // TODO: if optimizations are enabled, could do analysis/transformation of low-level code
@@ -431,7 +410,10 @@ void LowLevelCodeGen::translate_instruction(Instruction *hl_ins, const std::shar
     int num_operand = hl_ins->get_num_operands();
     assert(num_operand == 1);
     Operand func_label = hl_ins->get_operand(0);
-    append_first_instruction(hl_ins, new Instruction(MINS_CALL, func_label), ll_iseq);
+    Instruction *funcall = new Instruction(MINS_CALL, func_label);
+    Symbol *symb = hl_ins->get_symbol();
+    funcall->set_symbol(symb);
+    append_first_instruction(hl_ins, funcall, ll_iseq);
     return;
   }
   if (hl_opcode >= HINS_neg_b && hl_opcode <= HINS_neg_q)

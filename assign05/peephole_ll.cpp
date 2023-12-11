@@ -5,10 +5,11 @@
 #include "lowlevel.h"
 #include "peephole_ll.h"
 
-namespace {
+namespace
+{
 
-bool DEBUG_PEEPHOLE_LL;
-DebugVar d("DEBUG_PEEPHOLE_LL", DEBUG_PEEPHOLE_LL);
+  bool DEBUG_PEEPHOLE_LL;
+  DebugVar d("DEBUG_PEEPHOLE_LL", DEBUG_PEEPHOLE_LL);
 
 }
 
@@ -16,111 +17,120 @@ DebugVar d("DEBUG_PEEPHOLE_LL", DEBUG_PEEPHOLE_LL);
 // Window matching and rewriting
 ////////////////////////////////////////////////////////////////////////
 
-namespace {
+namespace
+{
 
-// These are used for naming instances of instructions and
-// operands in patterns and replacements.
-const char A = 'A';
-const char B = 'B';
-const char C = 'C';
-const char D = 'D';
-const char E = 'E';
-const char F = 'F';
-const char G = 'G';
-const char H = 'H';
+  // These are used for naming instances of instructions and
+  // operands in patterns and replacements.
+  const char A = 'A';
+  const char B = 'B';
+  const char C = 'C';
+  const char D = 'D';
+  const char E = 'E';
+  const char F = 'F';
+  const char G = 'G';
+  const char H = 'H';
 
-// Name used to indicate that we don't care about recording
-// the result of a match
-const char DONT_CARE = '_';
+  // Name used to indicate that we don't care about recording
+  // the result of a match
+  const char DONT_CARE = '_';
 
-////////////////////////////////////////////////////////////////////////
-// MatchContext keeps track of opcodes and operands
-// matched in patterns.
-////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////
+  // MatchContext keeps track of opcodes and operands
+  // matched in patterns.
+  ////////////////////////////////////////////////////////////////////////
 
-class MatchContext {
-private:
-  std::map<char, LowLevelOpcode> m_opcode_matches;
-  std::map<char, Operand> m_operand_matches;
+  class MatchContext
+  {
+  private:
+    std::map<char, LowLevelOpcode> m_opcode_matches;
+    std::map<char, Operand> m_operand_matches;
 
-public:
-  MatchContext() { }
-  ~MatchContext() { }
+  public:
+    MatchContext() {}
+    ~MatchContext() {}
 
-  template<typename Map>
-  bool has_match(const Map &m, char name) const {
-    assert(name != DONT_CARE);
-    return m.count(name) > 0;
+    template <typename Map>
+    bool has_match(const Map &m, char name) const
+    {
+      assert(name != DONT_CARE);
+      return m.count(name) > 0;
+    }
+
+    template <typename Map>
+    typename Map::mapped_type get_match(const Map &m, char name) const
+    {
+      assert(name != DONT_CARE);
+      auto i = m.find(name);
+      assert(i != m.end());
+      return i->second;
+    }
+
+    template <typename Map>
+    void set_match(Map &m, char name, typename Map::mapped_type val)
+    {
+      assert(name != DONT_CARE);
+      assert(!has_match(m, name));
+      m[name] = val;
+    }
+
+    bool has_opcode_match(char name) const { return has_match(m_opcode_matches, name); }
+    void set_opcode_match(char name, LowLevelOpcode opcode) { set_match(m_opcode_matches, name, opcode); }
+    LowLevelOpcode get_opcode_match(char name) const { return get_match(m_opcode_matches, name); }
+
+    bool has_operand_match(char name) const { return has_match(m_operand_matches, name); }
+    void set_operand_match(char name, Operand operand) { set_match(m_operand_matches, name, operand); }
+    Operand get_operand_match(char name) const { return get_match(m_operand_matches, name); }
+  };
+
+  ////////////////////////////////////////////////////////////////////////
+  // Base class for opcode matchers.
+  ////////////////////////////////////////////////////////////////////////
+
+  class MatchOpcode
+  {
+  public:
+    virtual ~MatchOpcode();
+    virtual bool match(LowLevelOpcode opcode, MatchContext &ctx) const = 0;
+  };
+
+  MatchOpcode::~MatchOpcode()
+  {
   }
 
-  template<typename Map>
-  typename Map::mapped_type get_match(const Map &m, char name) const {
-    assert(name != DONT_CARE);
-    auto i = m.find(name);
-    assert(i != m.end());
-    return i->second;
+  ////////////////////////////////////////////////////////////////////////
+  // Match a range of opcodes.
+  ////////////////////////////////////////////////////////////////////////
+
+  class MatchOpcodeRange : public MatchOpcode
+  {
+  private:
+    int m_ll_opcode;
+    int m_range_size;
+    char m_name;
+
+  public:
+    MatchOpcodeRange(int ll_opcode, int range_size, char name);
+    virtual ~MatchOpcodeRange();
+    virtual bool match(LowLevelOpcode opcode, MatchContext &ctx) const;
+  };
+
+  MatchOpcodeRange::MatchOpcodeRange(int ll_opcode, int range_size, char name)
+      : m_ll_opcode(ll_opcode), m_range_size(range_size), m_name(name)
+  {
   }
 
-  template<typename Map>
-  void set_match(Map &m, char name, typename Map::mapped_type val) {
-    assert(name != DONT_CARE);
-    assert(!has_match(m, name));
-    m[name] = val;
+  MatchOpcodeRange::~MatchOpcodeRange()
+  {
   }
 
-  bool has_opcode_match(char name) const                    { return has_match(m_opcode_matches, name); }
-  void set_opcode_match(char name, LowLevelOpcode opcode)   { set_match(m_opcode_matches, name, opcode); }
-  LowLevelOpcode get_opcode_match(char name) const          { return get_match(m_opcode_matches, name); }
-
-  bool has_operand_match(char name) const                   { return has_match(m_operand_matches, name); }
-  void set_operand_match(char name, Operand operand)        { set_match(m_operand_matches, name, operand); }
-  Operand get_operand_match(char name) const                { return get_match(m_operand_matches, name); }
-};
-
-////////////////////////////////////////////////////////////////////////
-// Base class for opcode matchers.
-////////////////////////////////////////////////////////////////////////
-
-class MatchOpcode {
-public:
-  virtual ~MatchOpcode();
-  virtual bool match(LowLevelOpcode opcode, MatchContext &ctx) const = 0;
-};
-
-MatchOpcode::~MatchOpcode() {
-}
-
-////////////////////////////////////////////////////////////////////////
-// Match a range of opcodes.
-////////////////////////////////////////////////////////////////////////
-
-class MatchOpcodeRange : public MatchOpcode {
-private:
-  int m_ll_opcode;
-  int m_range_size;
-  char m_name;
-
-public:
-  MatchOpcodeRange(int ll_opcode, int range_size, char name);
-  virtual ~MatchOpcodeRange();
-  virtual bool match(LowLevelOpcode opcode, MatchContext &ctx) const;
-};
-
-MatchOpcodeRange::MatchOpcodeRange(int ll_opcode, int range_size, char name)
-  : m_ll_opcode(ll_opcode)
-  , m_range_size(range_size)
-  , m_name(name) {
-}
-
-MatchOpcodeRange::~MatchOpcodeRange() {
-}
-
-bool MatchOpcodeRange::match(LowLevelOpcode opcode, MatchContext &ctx) const {
-  bool matches = int(opcode) >= m_ll_opcode && int(opcode) < m_ll_opcode + m_range_size;
-  if (matches && m_name != DONT_CARE)
-    ctx.set_opcode_match(m_name, opcode);
-  return matches;
-}
+  bool MatchOpcodeRange::match(LowLevelOpcode opcode, MatchContext &ctx) const
+  {
+    bool matches = int(opcode) >= m_ll_opcode && int(opcode) < m_ll_opcode + m_range_size;
+    if (matches && m_name != DONT_CARE)
+      ctx.set_opcode_match(m_name, opcode);
+    return matches;
+  }
 
 #if 0
 ////////////////////////////////////////////////////////////////////////
@@ -150,783 +160,1398 @@ bool MatchPreviousOpcode::match(LowLevelOpcode opcode, MatchContext &ctx) const 
 }
 #endif
 
-////////////////////////////////////////////////////////////////////////
-// Match a "well behaved" ALU opcode of a specified size.
-// Note that the size is 1=8 bit, 2=16 bit, 4=32 bit, 8=64 bit.
-// In practice only 32 and 64 ALU instructions are generated.
-////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////
+  // Match a range of opcodes.
+  ////////////////////////////////////////////////////////////////////////
 
-class MatchAluOpcode : public MatchOpcode {
-private:
-  char m_name;
-  int m_size;
-  bool m_require_commutative;
+  class MatchedOpcode : public MatchOpcode
+  {
+  private:
+    char m_name;
+    LowLevelOpcode m_ll_opcode, m_prev_base_opcode;
 
-public:
-  MatchAluOpcode(char name, int size, bool require_commutative = false);
-  virtual ~MatchAluOpcode();
-
-  virtual bool match(LowLevelOpcode opcode, MatchContext &ctx) const;
-};
-
-MatchAluOpcode::MatchAluOpcode(char name, int size, bool require_commutative)
-  : m_name(name)
-  , m_size(size)
-  , m_require_commutative(require_commutative) {
-}
-
-MatchAluOpcode::~MatchAluOpcode() {
-}
-
-bool MatchAluOpcode::match(LowLevelOpcode opcode, MatchContext &ctx) const {
-  static const std::map<LowLevelOpcode, int> ALU_OPS = {
-    { MINS_ADDL, 4 },
-    { MINS_ADDQ, 8 },
-    { MINS_SUBL, 4 },
-    { MINS_SUBQ, 8 },
-    { MINS_IMULL, 4 },
-    { MINS_IMULQ, 8 },
+  public:
+    MatchedOpcode(char name);
+    MatchedOpcode(LowLevelOpcode m_ll_opcode, LowLevelOpcode m_prev_opcode, char name);
+    virtual ~MatchedOpcode();
+    virtual bool match(LowLevelOpcode opcode, MatchContext &ctx) const;
   };
 
-  if (m_require_commutative &&
-      (opcode == MINS_SUBL || opcode == MINS_SUBQ))
-    return false;
-
-  auto i = ALU_OPS.find(opcode);
-  if (i == ALU_OPS.end())
-    return false;
-
-  if (i->second != m_size)
-    return false;
-
-  // Match!
-
-  if (m_name == DONT_CARE)
-    return true;
-
-  // If this is the first match, register it.
-  if (!ctx.has_opcode_match(m_name)) {
-    ctx.set_opcode_match(m_name, opcode);
-    return true;
+  MatchedOpcode::MatchedOpcode(char name)
+      : m_name(name), m_ll_opcode(MINS_NOP), m_prev_base_opcode(MINS_NOP)
+  {
   }
 
-  // Otherwise, make sure this opcode matches the previous one
-  return opcode == ctx.get_opcode_match(m_name);
-}
-
-////////////////////////////////////////////////////////////////////////
-// Base class for matching operands.
-////////////////////////////////////////////////////////////////////////
-
-class MatchOperand {
-public:
-  virtual ~MatchOperand();
-  virtual bool match(Operand operand, MatchContext &ctx) const = 0;
-};
-
-MatchOperand::~MatchOperand() {
-}
-
-////////////////////////////////////////////////////////////////////////
-// Match a machine register operand.
-////////////////////////////////////////////////////////////////////////
-
-class MatchMreg : public MatchOperand {
-private:
-  char m_name;
-  bool m_want_memref;
-public:
-  MatchMreg(char name, bool want_memref = false);
-  virtual ~MatchMreg();
-
-  virtual bool match(Operand operand, MatchContext &ctx) const;
-
-private:
-  bool is_mreg(Operand operand) const {
-    return operand.get_kind() >= Operand::MREG8 && operand.get_kind() <= Operand::MREG64;
-  }
-};
-
-MatchMreg::MatchMreg(char name, bool want_memref)
-  : m_name(name)
-  , m_want_memref(want_memref) {
-}
-
-MatchMreg::~MatchMreg() {
-}
-
-bool MatchMreg::match(Operand operand, MatchContext &ctx) const {
-  // Make sure we have the desired kind of operand
-  if (m_want_memref && operand.get_kind() != Operand::MREG64_MEM)
-    return false;
-  if (!m_want_memref && !is_mreg(operand))
-    return false;
-
-  // If there was no previous match of an operand with this name,
-  // then record the match
-  if (!ctx.has_operand_match(m_name)) {
-    ctx.set_operand_match(m_name, operand);
-    return true;
+  MatchedOpcode::MatchedOpcode(LowLevelOpcode m_ll_opcode, LowLevelOpcode m_prev_opcode, char name)
+      : m_name(name), m_ll_opcode(m_ll_opcode), m_prev_base_opcode(m_prev_opcode)
+  {
   }
 
-  // There was a previous match of an operand with this name,
-  // so check to see whether the new operand is the same as the
-  // previously matched one.
-  Operand prev_operand = ctx.get_operand_match(m_name);
-  return prev_operand.get_base_reg() == operand.get_base_reg();
-}
-
-////////////////////////////////////////////////////////////////////////
-// Match a specific immediate integer operand
-////////////////////////////////////////////////////////////////////////
-
-class MatchSpecificImmediate : public MatchOperand {
-private:
-  long m_imm_ival;
-
-public:
-  MatchSpecificImmediate(long imm_ival);
-  virtual ~MatchSpecificImmediate();
-
-  virtual bool match(Operand operand, MatchContext &ctx) const;
-};
-
-MatchSpecificImmediate::MatchSpecificImmediate(long imm_ival)
-  : m_imm_ival(imm_ival) {
-}
-
-MatchSpecificImmediate::~MatchSpecificImmediate() {
-}
-
-bool MatchSpecificImmediate::match(Operand operand, MatchContext &ctx) const {
-  return operand.get_kind() == Operand::IMM_IVAL && operand.get_imm_ival() == m_imm_ival;
-}
-
-////////////////////////////////////////////////////////////////////////
-// Match an immediate integer operand and record the match
-// in the context (and verify that other references to the
-// immediate have the same immediate value)
-////////////////////////////////////////////////////////////////////////
-
-class MatchImmediate : public MatchOperand {
-private:
-  char m_name;
-
-public:
-  MatchImmediate(char m_name);
-  virtual ~MatchImmediate();
-
-  virtual bool match(Operand operand, MatchContext &ctx) const;
-};
-
-MatchImmediate::MatchImmediate(char name)
-  : m_name(name) {
-}
-
-MatchImmediate::~MatchImmediate() {
-}
-
-bool MatchImmediate::match(Operand operand, MatchContext &ctx) const {
-  if (operand.get_kind() != Operand::IMM_IVAL)
-    return false;
-
-  if (!ctx.has_operand_match(m_name)) {
-    // first match of an immediate with this name
-    ctx.set_operand_match(m_name, operand);
-    return true;
-  } else {
-    // make sure this immediate matches the previously matched one
-    // with the same name
-    Operand prev = ctx.get_operand_match(m_name);
-    return operand == prev;
+  MatchedOpcode::~MatchedOpcode()
+  {
   }
-}
 
-////////////////////////////////////////////////////////////////////////
-// Match any operand (useful for situations where a source
-// operand could be either an mreg or an immediate).
-// The operand can optionally be specified.
-////////////////////////////////////////////////////////////////////////
+  bool MatchedOpcode::match(LowLevelOpcode opcode, MatchContext &ctx) const
+  {
+    if (m_ll_opcode == MINS_NOP)
+    {
+      if (m_name != DONT_CARE && !ctx.has_opcode_match(m_name))
+      {
+        ctx.set_opcode_match(m_name, opcode);
+        return true;
+      }
+      return opcode == ctx.get_opcode_match(m_name);
+    }
+    else
+    {
+      if (m_name != DONT_CARE && !ctx.has_opcode_match(m_name))
+      {
+        return false;
+      }
+      return opcode == (m_ll_opcode + ctx.get_opcode_match(m_name) - m_prev_base_opcode);
+    }
+  }
 
-class MatchAny : public MatchOperand {
-private:
-  char m_name;
-  int m_required_operand_kind;
+  ////////////////////////////////////////////////////////////////////////
+  // Match a "well behaved" ALU opcode of a specified size.
+  // Note that the size is 1=8 bit, 2=16 bit, 4=32 bit, 8=64 bit.
+  // In practice only 32 and 64 ALU instructions are generated.
+  ////////////////////////////////////////////////////////////////////////
 
-public:
-  MatchAny(char name, int required_operand_kind);
-  virtual ~MatchAny();
+  class MatchAluOpcode : public MatchOpcode
+  {
+  private:
+    char m_name;
+    int m_size;
+    bool m_require_commutative;
 
-  virtual bool match(Operand operand, MatchContext &ctx) const;
-};
+  public:
+    MatchAluOpcode(char name, int size, bool require_commutative = false);
+    virtual ~MatchAluOpcode();
 
-MatchAny::MatchAny(char name, int required_operand_kind = -1)
-  : m_name(name)
-  , m_required_operand_kind(required_operand_kind) {
-}
+    virtual bool match(LowLevelOpcode opcode, MatchContext &ctx) const;
+  };
 
-MatchAny::~MatchAny() {
-}
+  MatchAluOpcode::MatchAluOpcode(char name, int size, bool require_commutative)
+      : m_name(name), m_size(size), m_require_commutative(require_commutative)
+  {
+  }
 
-bool MatchAny::match(Operand operand, MatchContext &ctx) const {
-  if (m_required_operand_kind >= 0 && m_required_operand_kind != int(operand.get_kind()))
-    return false;
+  MatchAluOpcode::~MatchAluOpcode()
+  {
+  }
 
-  if (!ctx.has_operand_match(m_name)) {
-    // First match of an operand with this name
-    ctx.set_operand_match(m_name, operand);
-    return true;
-  } else {
-    // Make sure this operand matches the previously matched one
+  bool MatchAluOpcode::match(LowLevelOpcode opcode, MatchContext &ctx) const
+  {
+    static const std::map<LowLevelOpcode, int> ALU_OPS = {
+        {MINS_ADDL, 4},
+        {MINS_ADDQ, 8},
+        {MINS_SUBL, 4},
+        {MINS_SUBQ, 8},
+        {MINS_IMULL, 4},
+        {MINS_IMULQ, 8},
+    };
+
+    if (m_require_commutative &&
+        (opcode == MINS_SUBL || opcode == MINS_SUBQ))
+      return false;
+
+    auto i = ALU_OPS.find(opcode);
+    if (i == ALU_OPS.end())
+      return false;
+
+    if (i->second != m_size)
+      return false;
+
+    // Match!
+
+    if (m_name == DONT_CARE)
+      return true;
+
+    // If this is the first match, register it.
+    if (!ctx.has_opcode_match(m_name))
+    {
+      ctx.set_opcode_match(m_name, opcode);
+      return true;
+    }
+
+    // Otherwise, make sure this opcode matches the previous one
+    return opcode == ctx.get_opcode_match(m_name);
+  }
+
+  ////////////////////////////////////////////////////////////////////////
+  // Base class for matching operands.
+  ////////////////////////////////////////////////////////////////////////
+
+  class MatchOperand
+  {
+  public:
+    virtual ~MatchOperand();
+    virtual bool match(Operand operand, MatchContext &ctx) const = 0;
+  };
+
+  MatchOperand::~MatchOperand()
+  {
+  }
+
+  ////////////////////////////////////////////////////////////////////////
+  // Match a machine register operand.
+  ////////////////////////////////////////////////////////////////////////
+
+  class MatchMreg : public MatchOperand
+  {
+  private:
+    char m_name;
+    bool m_want_memref;
+
+  public:
+    MatchMreg(char name, bool want_memref = false);
+    virtual ~MatchMreg();
+
+    virtual bool match(Operand operand, MatchContext &ctx) const;
+
+  private:
+    bool is_mreg(Operand operand) const
+    {
+      return operand.get_kind() >= Operand::MREG8 && operand.get_kind() <= Operand::MREG64;
+    }
+  };
+
+  MatchMreg::MatchMreg(char name, bool want_memref)
+      : m_name(name), m_want_memref(want_memref)
+  {
+  }
+
+  MatchMreg::~MatchMreg()
+  {
+  }
+
+  bool MatchMreg::match(Operand operand, MatchContext &ctx) const
+  {
+    // Make sure we have the desired kind of operand
+    if (m_want_memref && operand.get_kind() != Operand::MREG64_MEM)
+      return false;
+    if (!m_want_memref && !is_mreg(operand))
+      return false;
+
+    // If there was no previous match of an operand with this name,
+    // then record the match
+    if (!ctx.has_operand_match(m_name))
+    {
+      ctx.set_operand_match(m_name, operand);
+      return true;
+    }
+
+    // There was a previous match of an operand with this name,
+    // so check to see whether the new operand is the same as the
+    // previously matched one.
     Operand prev_operand = ctx.get_operand_match(m_name);
-    return operand == prev_operand;
+    if (!m_want_memref)
+    {
+      return prev_operand == operand;
+    }
+    else
+    {
+      return prev_operand.get_base_reg() == operand.get_base_reg();
+    }
   }
-}
 
-////////////////////////////////////////////////////////////////////////
-// Match an instruction
-////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////
+  // Match a machine register with flexible size
+  ////////////////////////////////////////////////////////////////////////
+  class MatchMregFlex : public MatchOperand
+  {
+  private:
+    char m_name;
+    bool m_want_memref;
 
-class InstructionMatcher {
-private:
-  MatchOpcode *m_match_opcode;
-  std::vector<MatchOperand *> m_match_operands;
+  public:
+    MatchMregFlex(char name, bool want_memref = false);
+    virtual ~MatchMregFlex();
 
-public:
-  InstructionMatcher(MatchOpcode *match_opcode, std::initializer_list<MatchOperand *> match_operands);
+    virtual bool match(Operand operand, MatchContext &ctx) const;
 
-  ~InstructionMatcher();
+  private:
+    bool is_mreg(Operand operand) const
+    {
+      return operand.get_kind() >= Operand::MREG8 && operand.get_kind() <= Operand::MREG64;
+    }
+  };
 
-  bool match(const Instruction *ins, MatchContext &ctx) const;
-};
+  MatchMregFlex::MatchMregFlex(char name, bool want_memref)
+      : m_name(name), m_want_memref(want_memref)
+  {
+  }
 
-InstructionMatcher::InstructionMatcher(MatchOpcode *match_opcode, std::initializer_list<MatchOperand *> match_operands)
-  : m_match_opcode(match_opcode)
-  , m_match_operands(match_operands) {
-}
+  MatchMregFlex::~MatchMregFlex()
+  {
+  }
 
-InstructionMatcher::~InstructionMatcher() {
-  delete m_match_opcode;
-  for (auto i = m_match_operands.begin(); i != m_match_operands.end(); ++i)
-    delete *i;
-}
-
-bool InstructionMatcher::match(const Instruction *ins, MatchContext &ctx) const {
-  // Make sure number of operands matches
-  if (ins->get_num_operands() != m_match_operands.size())
-    return false;
-
-  // See whether opcode matches
-  if (!m_match_opcode->match(LowLevelOpcode(ins->get_opcode()), ctx))
-    return false;
-
-  // See whether operands match
-  unsigned idx = 0;
-  for (auto i = m_match_operands.begin(); i != m_match_operands.end(); ++i, ++idx) {
-    const MatchOperand *match_operand = *i;
-    Operand operand = ins->get_operand(idx);
-    if (!match_operand->match(operand, ctx))
+  bool MatchMregFlex::match(Operand operand, MatchContext &ctx) const
+  {
+    // Make sure we have the desired kind of operand
+    if (m_want_memref || !is_mreg(operand))
+    {
       return false;
+    }
+
+    Operand base_operand(Operand::MREG64, operand.get_base_reg());
+    // If there was no previous match of an operand with this name,
+    // then record the match
+    if (!ctx.has_operand_match(m_name))
+    {
+      ctx.set_operand_match(m_name, base_operand);
+      return true;
+    }
+
+    // There was a previous match of an operand with this name,
+    // so check to see whether the new operand is the same as the
+    // previously matched one.
+    Operand prev_operand = ctx.get_operand_match(m_name);
+    return prev_operand.get_base_reg() == operand.get_base_reg();
   }
 
-  // The instruction matches!
-  return true;
-}
+  ////////////////////////////////////////////////////////////////////////
+  // Match a specific immediate integer operand
+  ////////////////////////////////////////////////////////////////////////
 
-////////////////////////////////////////////////////////////////////////
-// Opcode generators
-////////////////////////////////////////////////////////////////////////
+  class MatchSpecificImmediate : public MatchOperand
+  {
+  private:
+    long m_imm_ival;
 
-// Base class
-class GenerateOpcode {
-public:
-  virtual ~GenerateOpcode();
-  virtual LowLevelOpcode get_opcode(const MatchContext &ctx) const = 0;
-};
+  public:
+    MatchSpecificImmediate(long imm_ival);
+    virtual ~MatchSpecificImmediate();
 
-GenerateOpcode::~GenerateOpcode() {
-}
+    virtual bool match(Operand operand, MatchContext &ctx) const;
+  };
 
-// Previously matched opcode
-class GenerateMatchedOpcode : public GenerateOpcode {
-private:
-  char m_name;
-public:
-  GenerateMatchedOpcode(char name);
-  virtual ~GenerateMatchedOpcode();
-  virtual LowLevelOpcode get_opcode(const MatchContext &ctx) const;
-};
+  MatchSpecificImmediate::MatchSpecificImmediate(long imm_ival)
+      : m_imm_ival(imm_ival)
+  {
+  }
 
-GenerateMatchedOpcode::GenerateMatchedOpcode(char name)
-  : m_name(name) {
-}
+  MatchSpecificImmediate::~MatchSpecificImmediate()
+  {
+  }
 
-GenerateMatchedOpcode::~GenerateMatchedOpcode() {
-}
+  bool MatchSpecificImmediate::match(Operand operand, MatchContext &ctx) const
+  {
+    return operand.get_kind() == Operand::IMM_IVAL && operand.get_imm_ival() == m_imm_ival;
+  }
 
-LowLevelOpcode GenerateMatchedOpcode::get_opcode(const MatchContext &ctx) const {
-  return ctx.get_opcode_match(m_name);
-}
+  ////////////////////////////////////////////////////////////////////////
+  // Match an immediate integer operand and record the match
+  // in the context (and verify that other references to the
+  // immediate have the same immediate value)
+  ////////////////////////////////////////////////////////////////////////
 
-// Generate specific opcode
-class GenerateSpecificOpcode : public GenerateOpcode {
-private:
-  LowLevelOpcode m_ll_opcode;
+  class MatchImmediate : public MatchOperand
+  {
+  private:
+    char m_name;
 
-public:
-  GenerateSpecificOpcode(LowLevelOpcode ll_opcode);
-  virtual ~GenerateSpecificOpcode();
-  virtual LowLevelOpcode get_opcode(const MatchContext &ctx) const;
-};
+  public:
+    MatchImmediate(char m_name);
+    virtual ~MatchImmediate();
 
-GenerateSpecificOpcode::GenerateSpecificOpcode(LowLevelOpcode ll_opcode)
-  : m_ll_opcode(ll_opcode) {
-}
+    virtual bool match(Operand operand, MatchContext &ctx) const;
+  };
 
-GenerateSpecificOpcode::~GenerateSpecificOpcode() {
-}
+  MatchImmediate::MatchImmediate(char name)
+      : m_name(name)
+  {
+  }
 
-LowLevelOpcode GenerateSpecificOpcode::get_opcode(const MatchContext &ctx) const {
-  return m_ll_opcode;
-}
+  MatchImmediate::~MatchImmediate()
+  {
+  }
 
-// Generate a conditional jump instruction using the same
-// decision as a previously matched set instruction.
-class GenerateConditionalJumpFromSet : public GenerateOpcode {
-private:
-  char m_name;
-
-public:
-  GenerateConditionalJumpFromSet(char name);
-  virtual ~GenerateConditionalJumpFromSet();
-  virtual LowLevelOpcode get_opcode(const MatchContext &ctx) const;
-};
-
-GenerateConditionalJumpFromSet::GenerateConditionalJumpFromSet(char name)
-  : m_name(name) {
-}
-
-GenerateConditionalJumpFromSet::~GenerateConditionalJumpFromSet() {
-}
-
-LowLevelOpcode GenerateConditionalJumpFromSet::get_opcode(const MatchContext &ctx) const {
-  LowLevelOpcode set_opcode = ctx.get_opcode_match(m_name);
-
-  // The conditional jump opcodes are in the same order as the
-  // set opcodes
-  int offset = int(set_opcode) - int(MINS_SETL);
-  assert(offset >= 0 && offset < 6);
-  LowLevelOpcode j_opcode = LowLevelOpcode(int(MINS_JL) + offset);
-  return j_opcode;
-}
-
-////////////////////////////////////////////////////////////////////////
-// Operand generators
-////////////////////////////////////////////////////////////////////////
-
-// Base class
-class GenerateOperand {
-public:
-  virtual ~GenerateOperand();
-  virtual Operand get_operand(const MatchContext &ctx) const = 0;
-};
-
-GenerateOperand::~GenerateOperand() {
-}
-
-// Generate a previously matched operand
-class GenerateMatchedOperand : public GenerateOperand {
-private:
-  char m_name;
-public:
-  GenerateMatchedOperand(char name);
-  virtual ~GenerateMatchedOperand();
-  virtual Operand get_operand(const MatchContext &ctx) const;
-};
-
-GenerateMatchedOperand::GenerateMatchedOperand(char name)
-  : m_name(name) {
-}
-
-GenerateMatchedOperand::~GenerateMatchedOperand() {
-}
-
-Operand GenerateMatchedOperand::get_operand(const MatchContext &ctx) const {
-  return ctx.get_operand_match(m_name);
-}
-
-// Generate a fancy indexed/scaled memory reference
-class GenerateIndexedMemref : public GenerateOperand {
-private:
-  char m_base_name, m_index_name;
-  int m_scale;
-
-public:
-  GenerateIndexedMemref(char base_name, char index_name, int scale);
-  virtual ~GenerateIndexedMemref();
-
-  virtual Operand get_operand(const MatchContext &ctx) const;
-};
-
-GenerateIndexedMemref::GenerateIndexedMemref(char base_name, char index_name, int scale)
-  : m_base_name(base_name)
-  , m_index_name(index_name)
-  , m_scale(scale) {
-}
-
-GenerateIndexedMemref::~GenerateIndexedMemref() {
-}
-
-Operand GenerateIndexedMemref::get_operand(const MatchContext &ctx) const {
-  Operand base_reg = ctx.get_operand_match(m_base_name);
-  Operand index_reg = ctx.get_operand_match(m_index_name);
-  return Operand(Operand::MREG64_MEM_IDX_SCALE, base_reg.get_base_reg(), index_reg.get_base_reg(), m_scale);
-}
-
-// Generate a memory reference at an offset from a pointer in an mreg
-class GenerateOffsetMemref : public GenerateOperand {
-private:
-  char m_base_name, m_off_name;
-
-public:
-  GenerateOffsetMemref(char base_name, char off_name);
-  virtual ~GenerateOffsetMemref();
-
-  virtual Operand get_operand(const MatchContext &ctx) const;
-};
-
-GenerateOffsetMemref::GenerateOffsetMemref(char base_name, char off_name)
-  : m_base_name(base_name)
-  , m_off_name(off_name) {
-}
-
-GenerateOffsetMemref::~GenerateOffsetMemref() {
-}
-
-Operand GenerateOffsetMemref::get_operand(const MatchContext &ctx) const {
-  Operand base_reg = ctx.get_operand_match(m_base_name);
-  assert(base_reg.get_kind() == Operand::MREG64);
-
-  Operand off = ctx.get_operand_match(m_off_name);
-  assert(off.get_kind() == Operand::IMM_IVAL);
-
-  return Operand(Operand::MREG64_MEM_OFF, base_reg.get_base_reg(), off.get_imm_ival());
-}
-
-////////////////////////////////////////////////////////////////////////
-// Generate an instruction using (potentially) opcode(s) and/or operand(s)
-// matched in the original sequence of instructions.
-////////////////////////////////////////////////////////////////////////
-
-class InstructionTemplate {
-private:
-  GenerateOpcode *m_opcode_generator;
-  std::vector<GenerateOperand *> m_operand_generators;
-
-public:
-  InstructionTemplate(GenerateOpcode *opcode_generator, std::initializer_list<GenerateOperand *> operand_generators);
-  virtual ~InstructionTemplate();
-  virtual Instruction *generate(const MatchContext &ctx) const;
-};
-
-InstructionTemplate::InstructionTemplate(GenerateOpcode *opcode_generator,
-                                         std::initializer_list<GenerateOperand *> operand_generators)
-  : m_opcode_generator(opcode_generator)
-  , m_operand_generators(operand_generators) {
-}
-
-InstructionTemplate::~InstructionTemplate() {
-  delete m_opcode_generator;
-  for (auto i = m_operand_generators.begin(); i != m_operand_generators.end(); ++i)
-    delete *i;
-}
-
-Instruction *InstructionTemplate::generate(const MatchContext &ctx) const {
-  unsigned num_operands = m_operand_generators.size();
-
-  // prepare operands
-  Operand operands[3];
-  for (unsigned i = 0; i < num_operands; ++i)
-    operands[i] = m_operand_generators[i]->get_operand(ctx);
-
-  return new Instruction(m_opcode_generator->get_opcode(ctx),
-                         operands[0], operands[1], operands[2],
-                         num_operands);
-}
-
-////////////////////////////////////////////////////////////////////////
-// Peephole matcher: a sequence of InstructionMatchers (to match an idiom
-// in the generated code) and a sequence of InstructionTemplates (to
-// generate equivalent but better code.)
-////////////////////////////////////////////////////////////////////////
-
-class PeepholeMatcher {
-private:
-  std::vector<InstructionMatcher *> m_instruction_matchers;
-  std::vector<InstructionTemplate *> m_instruction_templates;
-  std::string m_eliminated_assignments;
-  std::string m_separate_locs;
-
-public:
-  PeepholeMatcher(std::initializer_list<InstructionMatcher *> instruction_matchers,
-                  std::initializer_list<InstructionTemplate *> instruction_templates,
-                  const std::string &eliminated_assignments = "",
-                  const std::string &separate_locs = "");
-  ~PeepholeMatcher();
-
-  bool match(std::deque<Instruction *> &window,
-             const std::shared_ptr<InstructionSequence> &ll_iseq,
-             const LiveMregs &live_mregs,
-             const BasicBlock *bb) const;
-};
-
-PeepholeMatcher::PeepholeMatcher(std::initializer_list<InstructionMatcher *> instruction_matchers,
-                                 std::initializer_list<InstructionTemplate *> instruction_templates,
-                                 const std::string &eliminated_assignments,
-                                 const std::string &separate_locs)
-  : m_instruction_matchers(instruction_matchers)
-  , m_instruction_templates(instruction_templates)
-  , m_eliminated_assignments(eliminated_assignments)
-  , m_separate_locs(separate_locs) {
-}
-
-PeepholeMatcher::~PeepholeMatcher() {
-  for (auto i = m_instruction_matchers.begin(); i != m_instruction_matchers.end(); ++i)
-    delete *i;
-  for (auto i = m_instruction_templates.begin(); i != m_instruction_templates.end(); ++i)
-    delete *i;
-}
-
-bool PeepholeMatcher::match(std::deque<Instruction *> &window,
-                            const std::shared_ptr<InstructionSequence> &ll_iseq,
-                            const LiveMregs &live_mregs,
-                            const BasicBlock *bb) const {
-  // A match is only possible if the number of instructions in the window
-  // is at least as large as the number of instruction matchers.
-  if (window.size() < m_instruction_matchers.size())
-    return false;
-
-  MatchContext ctx;
-
-  auto j = window.begin();
-
-  // Apply each of the instruction matchers
-  Instruction *last_matched_ins = nullptr;
-  for (auto i = m_instruction_matchers.begin(); i != m_instruction_matchers.end(); ++i, ++j) {
-    const InstructionMatcher *matcher = *i;
-    Instruction *ins = *j;
-    if (!matcher->match(ins, ctx))
+  bool MatchImmediate::match(Operand operand, MatchContext &ctx) const
+  {
+    if (operand.get_kind() != Operand::IMM_IVAL)
       return false;
-    last_matched_ins = ins;
+
+    if (!ctx.has_operand_match(m_name))
+    {
+      // first match of an immediate with this name
+      ctx.set_operand_match(m_name, operand);
+      return true;
+    }
+    else
+    {
+      // make sure this immediate matches the previously matched one
+      // with the same name
+      Operand prev = ctx.get_operand_match(m_name);
+      return operand == prev;
+    }
   }
 
-  if (!m_eliminated_assignments.empty()) {
-    // Check the eliminated assignments and make sure that all of those
-    // mregs are dead
+  ////////////////////////////////////////////////////////////////////////
+  // Match any operand (useful for situations where a source
+  // operand could be either an mreg or an immediate).
+  // The operand can optionally be specified.
+  ////////////////////////////////////////////////////////////////////////
 
-    // Get set of live mregs after the last matched instruction
-    LiveMregs::FactType live_after_last_matched_ins =
-      live_mregs.get_fact_after_instruction(bb, last_matched_ins);
+  class MatchAny : public MatchOperand
+  {
+  private:
+    char m_name;
+    int m_required_operand_kind;
 
-    // Make sure that registers to which we would be eliminating an
-    // assignment are dead
-    for (auto i = m_eliminated_assignments.begin(); i != m_eliminated_assignments.end(); ++i) {
-      // Determine which mreg needs to be checked
-      char name = *i;
-      Operand mreg_operand = ctx.get_operand_match(name);
-      assert(mreg_operand.get_kind() >= Operand::MREG8 && mreg_operand.get_kind() <= Operand::MREG64);
+  public:
+    MatchAny(char name, int required_operand_kind);
+    virtual ~MatchAny();
 
-      if (live_after_last_matched_ins.test(mreg_operand.get_base_reg()))
-        // this mreg is still live, so we can't eliminate an assignment to it
+    virtual bool match(Operand operand, MatchContext &ctx) const;
+  };
+
+  MatchAny::MatchAny(char name, int required_operand_kind = -1)
+      : m_name(name), m_required_operand_kind(required_operand_kind)
+  {
+  }
+
+  MatchAny::~MatchAny()
+  {
+  }
+
+  bool MatchAny::match(Operand operand, MatchContext &ctx) const
+  {
+    if (m_required_operand_kind >= 0 && m_required_operand_kind != int(operand.get_kind()))
+    {
+      return false;
+    }
+
+    if (!ctx.has_operand_match(m_name))
+    {
+      // First match of an operand with this name
+      ctx.set_operand_match(m_name, operand);
+      return true;
+    }
+    else
+    {
+      // Make sure this operand matches the previously matched one
+      Operand prev_operand = ctx.get_operand_match(m_name);
+      return operand == prev_operand;
+    }
+  }
+
+  ////////////////////////////////////////////////////////////////////////
+  // Match an instruction
+  ////////////////////////////////////////////////////////////////////////
+
+  class InstructionMatcher
+  {
+  private:
+    MatchOpcode *m_match_opcode;
+    std::vector<MatchOperand *> m_match_operands;
+
+  public:
+    InstructionMatcher(MatchOpcode *match_opcode, std::initializer_list<MatchOperand *> match_operands);
+
+    ~InstructionMatcher();
+
+    bool match(const Instruction *ins, MatchContext &ctx) const;
+  };
+
+  InstructionMatcher::InstructionMatcher(MatchOpcode *match_opcode, std::initializer_list<MatchOperand *> match_operands)
+      : m_match_opcode(match_opcode), m_match_operands(match_operands)
+  {
+  }
+
+  InstructionMatcher::~InstructionMatcher()
+  {
+    delete m_match_opcode;
+    for (auto i = m_match_operands.begin(); i != m_match_operands.end(); ++i)
+      delete *i;
+  }
+
+  bool InstructionMatcher::match(const Instruction *ins, MatchContext &ctx) const
+  {
+    // Make sure number of operands matches
+    if (ins->get_num_operands() != m_match_operands.size())
+      return false;
+
+    // See whether opcode matches
+    if (!m_match_opcode->match(LowLevelOpcode(ins->get_opcode()), ctx))
+      return false;
+
+    // See whether operands match
+    unsigned idx = 0;
+    for (auto i = m_match_operands.begin(); i != m_match_operands.end(); ++i, ++idx)
+    {
+      const MatchOperand *match_operand = *i;
+      Operand operand = ins->get_operand(idx);
+      if (!match_operand->match(operand, ctx))
         return false;
     }
 
-    // Make sure that any locations that must be separate for correctness
-    // are definitely not the same register
-    assert(m_separate_locs.size() % 2 == 0);
-    for (unsigned i = 0; i < m_separate_locs.size(); i += 2) {
-      char loc1_name = m_separate_locs[i];
-      char loc2_name = m_separate_locs[i+1];
+    // The instruction matches!
+    return true;
+  }
 
-      Operand loc1 = ctx.get_operand_match(loc1_name);
-      Operand loc2 = ctx.get_operand_match(loc2_name);
+  ////////////////////////////////////////////////////////////////////////
+  // Opcode generators
+  ////////////////////////////////////////////////////////////////////////
 
-      if (loc1.get_kind() == loc2.get_kind()) {
-        assert(!loc1.is_memref());
-        assert(!loc1.is_imm_ival());
-        if (loc1.get_base_reg() == loc2.get_base_reg())
-          // Oops, these are the same register
+  // Base class
+  class GenerateOpcode
+  {
+  public:
+    virtual ~GenerateOpcode();
+    virtual LowLevelOpcode get_opcode(const MatchContext &ctx) const = 0;
+  };
+
+  GenerateOpcode::~GenerateOpcode()
+  {
+  }
+
+  // Previously matched opcode
+  class GenerateMatchedOpcode : public GenerateOpcode
+  {
+  private:
+    char m_name;
+
+  public:
+    GenerateMatchedOpcode(char name);
+    virtual ~GenerateMatchedOpcode();
+    virtual LowLevelOpcode get_opcode(const MatchContext &ctx) const;
+  };
+
+  GenerateMatchedOpcode::GenerateMatchedOpcode(char name)
+      : m_name(name)
+  {
+  }
+
+  GenerateMatchedOpcode::~GenerateMatchedOpcode()
+  {
+  }
+
+  LowLevelOpcode GenerateMatchedOpcode::get_opcode(const MatchContext &ctx) const
+  {
+    return ctx.get_opcode_match(m_name);
+  }
+
+  // Generate specific opcode
+  class GenerateSpecificOpcode : public GenerateOpcode
+  {
+  private:
+    LowLevelOpcode m_ll_opcode;
+
+  public:
+    GenerateSpecificOpcode(LowLevelOpcode ll_opcode);
+    virtual ~GenerateSpecificOpcode();
+    virtual LowLevelOpcode get_opcode(const MatchContext &ctx) const;
+  };
+
+  GenerateSpecificOpcode::GenerateSpecificOpcode(LowLevelOpcode ll_opcode)
+      : m_ll_opcode(ll_opcode)
+  {
+  }
+
+  GenerateSpecificOpcode::~GenerateSpecificOpcode()
+  {
+  }
+
+  LowLevelOpcode GenerateSpecificOpcode::get_opcode(const MatchContext &ctx) const
+  {
+    return m_ll_opcode;
+  }
+
+  // Generate specific opcode
+  class GenerateNonSpecificOpcode : public GenerateOpcode
+  {
+  private:
+    LowLevelOpcode m_ll_opcode, m_prev_base_opcode;
+    char m_size;
+
+  public:
+    GenerateNonSpecificOpcode(LowLevelOpcode ll_opcode, LowLevelOpcode prev_opcode, char size);
+    virtual ~GenerateNonSpecificOpcode();
+    virtual LowLevelOpcode get_opcode(const MatchContext &ctx) const;
+  };
+
+  GenerateNonSpecificOpcode::GenerateNonSpecificOpcode(LowLevelOpcode ll_opcode, LowLevelOpcode prev_opcode, char size)
+      : m_ll_opcode(ll_opcode), m_prev_base_opcode(prev_opcode), m_size(size)
+  {
+  }
+
+  GenerateNonSpecificOpcode::~GenerateNonSpecificOpcode()
+  {
+  }
+
+  LowLevelOpcode GenerateNonSpecificOpcode::get_opcode(const MatchContext &ctx) const
+  {
+    LowLevelOpcode prior_opcode = ctx.get_opcode_match(m_size);
+
+    // The conditional jump opcodes are in the same order as the
+    // set opcodes
+    int offset = int(prior_opcode) - int(m_prev_base_opcode);
+    return static_cast<LowLevelOpcode>((int)m_ll_opcode + offset);
+  }
+
+  // Generate a conditional jump instruction using the same
+  // decision as a previously matched set instruction.
+  class GenerateConditionalJumpFromSet : public GenerateOpcode
+  {
+  private:
+    char m_name;
+
+  public:
+    GenerateConditionalJumpFromSet(char name);
+    virtual ~GenerateConditionalJumpFromSet();
+    virtual LowLevelOpcode get_opcode(const MatchContext &ctx) const;
+  };
+
+  GenerateConditionalJumpFromSet::GenerateConditionalJumpFromSet(char name)
+      : m_name(name)
+  {
+  }
+
+  GenerateConditionalJumpFromSet::~GenerateConditionalJumpFromSet()
+  {
+  }
+
+  LowLevelOpcode GenerateConditionalJumpFromSet::get_opcode(const MatchContext &ctx) const
+  {
+    LowLevelOpcode set_opcode = ctx.get_opcode_match(m_name);
+
+    // The conditional jump opcodes are in the same order as the
+    // set opcodes
+    int offset = int(set_opcode) - int(MINS_SETL);
+    assert(offset >= 0 && offset < 6);
+    LowLevelOpcode j_opcode = LowLevelOpcode(int(MINS_JL) + offset);
+    return j_opcode;
+  }
+
+  ////////////////////////////////////////////////////////////////////////
+  // Operand generators
+  ////////////////////////////////////////////////////////////////////////
+
+  // Base class
+  class GenerateOperand
+  {
+  public:
+    virtual ~GenerateOperand();
+    virtual Operand get_operand(const MatchContext &ctx) const = 0;
+  };
+
+  GenerateOperand::~GenerateOperand()
+  {
+  }
+
+  // Generate a previously matched operand
+  class GenerateMatchedOperand : public GenerateOperand
+  {
+  private:
+    char m_name;
+    int m_size;
+
+  public:
+    GenerateMatchedOperand(char name);
+    GenerateMatchedOperand(char name, int size);
+    virtual ~GenerateMatchedOperand();
+    virtual Operand get_operand(const MatchContext &ctx) const;
+  };
+
+  GenerateMatchedOperand::GenerateMatchedOperand(char name)
+      : m_name(name), m_size(-1)
+  {
+  }
+
+  GenerateMatchedOperand::GenerateMatchedOperand(char name, int size)
+      : m_name(name), m_size(size)
+  {
+  }
+
+  GenerateMatchedOperand::~GenerateMatchedOperand()
+  {
+  }
+
+  Operand GenerateMatchedOperand::get_operand(const MatchContext &ctx) const
+  {
+    if (m_size == -1)
+    {
+      return ctx.get_operand_match(m_name);
+    }
+    return Operand(static_cast<Operand::Kind>(m_size), ctx.get_operand_match(m_name).get_base_reg());
+  }
+
+  // Generate a memory reference at an offset from a pointer in an mreg
+  class GenerateMemref : public GenerateOperand
+  {
+  private:
+    char m_base_name;
+
+  public:
+    GenerateMemref(char base_name);
+    virtual ~GenerateMemref();
+
+    virtual Operand get_operand(const MatchContext &ctx) const;
+  };
+
+  GenerateMemref ::GenerateMemref(char base_name)
+      : m_base_name(base_name)
+  {
+  }
+
+  GenerateMemref ::~GenerateMemref()
+  {
+  }
+
+  Operand GenerateMemref ::get_operand(const MatchContext &ctx) const
+  {
+    Operand base_reg = ctx.get_operand_match(m_base_name);
+    assert(base_reg.get_kind() == Operand::MREG64);
+
+    return Operand(Operand::MREG64_MEM, base_reg.get_base_reg());
+  }
+
+  // Generate a fancy indexed/scaled memory reference
+  class GenerateIndexedMemref : public GenerateOperand
+  {
+  private:
+    char m_base_name, m_index_name;
+    int m_scale;
+
+  public:
+    GenerateIndexedMemref(char base_name, char index_name, int scale);
+    virtual ~GenerateIndexedMemref();
+
+    virtual Operand get_operand(const MatchContext &ctx) const;
+  };
+
+  GenerateIndexedMemref::GenerateIndexedMemref(char base_name, char index_name, int scale)
+      : m_base_name(base_name), m_index_name(index_name), m_scale(scale)
+  {
+  }
+
+  GenerateIndexedMemref::~GenerateIndexedMemref()
+  {
+  }
+
+  Operand GenerateIndexedMemref::get_operand(const MatchContext &ctx) const
+  {
+    Operand base_reg = ctx.get_operand_match(m_base_name);
+    Operand index_reg = ctx.get_operand_match(m_index_name);
+    return Operand(Operand::MREG64_MEM_IDX_SCALE, base_reg.get_base_reg(), index_reg.get_base_reg(), m_scale);
+  }
+
+  // Generate a memory reference at an offset from a pointer in an mreg
+  class GenerateOffsetMemref : public GenerateOperand
+  {
+  private:
+    char m_base_name, m_off_name;
+
+  public:
+    GenerateOffsetMemref(char base_name, char off_name);
+    virtual ~GenerateOffsetMemref();
+
+    virtual Operand get_operand(const MatchContext &ctx) const;
+  };
+
+  GenerateOffsetMemref::GenerateOffsetMemref(char base_name, char off_name)
+      : m_base_name(base_name), m_off_name(off_name)
+  {
+  }
+
+  GenerateOffsetMemref::~GenerateOffsetMemref()
+  {
+  }
+
+  Operand GenerateOffsetMemref::get_operand(const MatchContext &ctx) const
+  {
+    Operand base_reg = ctx.get_operand_match(m_base_name);
+    assert(base_reg.get_kind() == Operand::MREG64);
+
+    Operand off = ctx.get_operand_match(m_off_name);
+    assert(off.get_kind() == Operand::IMM_IVAL);
+
+    return Operand(Operand::MREG64_MEM_OFF, base_reg.get_base_reg(), off.get_imm_ival());
+  }
+
+  ////////////////////////////////////////////////////////////////////////
+  // Generate an instruction using (potentially) opcode(s) and/or operand(s)
+  // matched in the original sequence of instructions.
+  ////////////////////////////////////////////////////////////////////////
+
+  class InstructionTemplate
+  {
+  private:
+    GenerateOpcode *m_opcode_generator;
+    std::vector<GenerateOperand *> m_operand_generators;
+
+  public:
+    InstructionTemplate(GenerateOpcode *opcode_generator, std::initializer_list<GenerateOperand *> operand_generators);
+    virtual ~InstructionTemplate();
+    virtual Instruction *generate(const MatchContext &ctx) const;
+  };
+
+  InstructionTemplate::InstructionTemplate(GenerateOpcode *opcode_generator,
+                                           std::initializer_list<GenerateOperand *> operand_generators)
+      : m_opcode_generator(opcode_generator), m_operand_generators(operand_generators)
+  {
+  }
+
+  InstructionTemplate::~InstructionTemplate()
+  {
+    delete m_opcode_generator;
+    for (auto i = m_operand_generators.begin(); i != m_operand_generators.end(); ++i)
+      delete *i;
+  }
+
+  Instruction *InstructionTemplate::generate(const MatchContext &ctx) const
+  {
+    unsigned num_operands = m_operand_generators.size();
+
+    // prepare operands
+    Operand operands[3];
+    for (unsigned i = 0; i < num_operands; ++i)
+      operands[i] = m_operand_generators[i]->get_operand(ctx);
+
+    return new Instruction(m_opcode_generator->get_opcode(ctx),
+                           operands[0], operands[1], operands[2],
+                           num_operands);
+  }
+
+  ////////////////////////////////////////////////////////////////////////
+  // Peephole matcher: a sequence of InstructionMatchers (to match an idiom
+  // in the generated code) and a sequence of InstructionTemplates (to
+  // generate equivalent but better code.)
+  ////////////////////////////////////////////////////////////////////////
+
+  class PeepholeMatcher
+  {
+  private:
+    std::vector<InstructionMatcher *> m_instruction_matchers;
+    std::vector<InstructionTemplate *> m_instruction_templates;
+    std::string m_eliminated_assignments;
+    std::string m_separate_locs;
+
+  public:
+    PeepholeMatcher(std::initializer_list<InstructionMatcher *> instruction_matchers,
+                    std::initializer_list<InstructionTemplate *> instruction_templates,
+                    const std::string &eliminated_assignments = "",
+                    const std::string &separate_locs = "");
+    ~PeepholeMatcher();
+
+    bool match(std::deque<Instruction *> &window,
+               const std::shared_ptr<InstructionSequence> &ll_iseq,
+               const LiveMregs &live_mregs,
+               const BasicBlock *bb) const;
+  };
+
+  PeepholeMatcher::PeepholeMatcher(std::initializer_list<InstructionMatcher *> instruction_matchers,
+                                   std::initializer_list<InstructionTemplate *> instruction_templates,
+                                   const std::string &eliminated_assignments,
+                                   const std::string &separate_locs)
+      : m_instruction_matchers(instruction_matchers), m_instruction_templates(instruction_templates), m_eliminated_assignments(eliminated_assignments), m_separate_locs(separate_locs)
+  {
+  }
+
+  PeepholeMatcher::~PeepholeMatcher()
+  {
+    for (auto i = m_instruction_matchers.begin(); i != m_instruction_matchers.end(); ++i)
+      delete *i;
+    for (auto i = m_instruction_templates.begin(); i != m_instruction_templates.end(); ++i)
+      delete *i;
+  }
+
+  bool PeepholeMatcher::match(std::deque<Instruction *> &window,
+                              const std::shared_ptr<InstructionSequence> &ll_iseq,
+                              const LiveMregs &live_mregs,
+                              const BasicBlock *bb) const
+  {
+    // A match is only possible if the number of instructions in the window
+    // is at least as large as the number of instruction matchers.
+    if (window.size() < m_instruction_matchers.size())
+      return false;
+
+    MatchContext ctx;
+
+    auto j = window.begin();
+
+    // Apply each of the instruction matchers
+    Instruction *last_matched_ins = nullptr;
+    for (auto i = m_instruction_matchers.begin(); i != m_instruction_matchers.end(); ++i, ++j)
+    {
+      const InstructionMatcher *matcher = *i;
+      Instruction *ins = *j;
+      if (!matcher->match(ins, ctx))
+        return false;
+      last_matched_ins = ins;
+    }
+
+    if (!m_eliminated_assignments.empty())
+    {
+      // Check the eliminated assignments and make sure that all of those
+      // mregs are dead
+
+      // Get set of live mregs after the last matched instruction
+      LiveMregs::FactType live_after_last_matched_ins =
+          live_mregs.get_fact_after_instruction(bb, last_matched_ins);
+
+      // Make sure that registers to which we would be eliminating an
+      // assignment are dead
+      for (auto i = m_eliminated_assignments.begin(); i != m_eliminated_assignments.end(); ++i)
+      {
+        // Determine which mreg needs to be checked
+        char name = *i;
+        Operand mreg_operand = ctx.get_operand_match(name);
+        assert(mreg_operand.get_kind() >= Operand::MREG8 && mreg_operand.get_kind() <= Operand::MREG64);
+
+        if (live_after_last_matched_ins.test(mreg_operand.get_base_reg()))
+          // this mreg is still live, so we can't eliminate an assignment to it
           return false;
       }
+
+      // Make sure that any locations that must be separate for correctness
+      // are definitely not the same register
+      assert(m_separate_locs.size() % 2 == 0);
+      for (unsigned i = 0; i < m_separate_locs.size(); i += 2)
+      {
+        char loc1_name = m_separate_locs[i];
+        char loc2_name = m_separate_locs[i + 1];
+
+        Operand loc1 = ctx.get_operand_match(loc1_name);
+        Operand loc2 = ctx.get_operand_match(loc2_name);
+
+        if (loc1.get_kind() == loc2.get_kind())
+        {
+          assert(!loc1.is_memref());
+          assert(!loc1.is_imm_ival());
+          if (loc1.get_base_reg() == loc2.get_base_reg())
+            // Oops, these are the same register
+            return false;
+        }
+      }
     }
+
+    // All of the instructions matched, and we won't be eliminating any assignments
+    // to mregs whose values will be needed later, so
+    //   - remove the matched instructions from the window, and
+    //   - generate instructions from the templates
+
+    // FIXME: we should probably only preserve comments if there is only one comment
+
+    std::string comment;
+
+    unsigned num_matched = m_instruction_matchers.size();
+    while (num_matched > 0)
+    {
+      if (comment.empty())
+      {
+        Instruction *ins = window.front();
+        if (ins->has_comment())
+          comment = ins->get_comment();
+      }
+      window.pop_front();
+      --num_matched;
+    }
+
+    bool added_comment = false;
+    for (auto i = m_instruction_templates.begin(); i != m_instruction_templates.end(); ++i)
+    {
+      const InstructionTemplate *ins_template = *i;
+      Instruction *gen_ins = ins_template->generate(ctx);
+      if (!comment.empty() && !added_comment)
+      {
+        gen_ins->set_comment(comment);
+        added_comment = true;
+      }
+      ll_iseq->append(gen_ins);
+    }
+
+    return true;
   }
 
-  // All of the instructions matched, and we won't be eliminating any assignments
-  // to mregs whose values will be needed later, so
-  //   - remove the matched instructions from the window, and
-  //   - generate instructions from the templates
+  ////////////////////////////////////////////////////////////////////////
+  // Helper functions to create instruction/opcode/operand matchers
+  // and instruction templates
+  ////////////////////////////////////////////////////////////////////////
 
-  // FIXME: we should probably only preserve comments if there is only one comment
-
-  std::string comment;
-
-  unsigned num_matched = m_instruction_matchers.size();
-  while (num_matched > 0) {
-    if (comment.empty()) {
-      Instruction *ins = window.front();
-      if (ins->has_comment())
-        comment = ins->get_comment();
-    }
-    window.pop_front();
-    --num_matched;
+  MatchOpcode *m_opcode(LowLevelOpcode ll_opcode, int size, char name)
+  {
+    return new MatchOpcodeRange(ll_opcode, size, name);
   }
 
-  bool added_comment = false;
-  for (auto i = m_instruction_templates.begin(); i != m_instruction_templates.end(); ++i) {
-    const InstructionTemplate *ins_template = *i;
-    Instruction *gen_ins = ins_template->generate(ctx);
-    if (!comment.empty() && !added_comment) {
-      gen_ins->set_comment(comment);
-      added_comment = true;
-    }
-    ll_iseq->append(gen_ins);
+  // Match an exact opcode, where we won't need to refer to it again
+  MatchOpcode *m_opcode(LowLevelOpcode ll_opcode)
+  {
+    return new MatchOpcodeRange(ll_opcode, 1, DONT_CARE);
   }
 
-  return true;
-}
+  MatchOpcode *m_opcode(char name)
+  {
+    return new MatchedOpcode(name);
+  }
 
-////////////////////////////////////////////////////////////////////////
-// Helper functions to create instruction/opcode/operand matchers
-// and instruction templates
-////////////////////////////////////////////////////////////////////////
+  MatchOpcode *m_opcode(LowLevelOpcode ll_opcode, LowLevelOpcode prev_opcode, char name)
+  {
+    return new MatchedOpcode(ll_opcode, prev_opcode, name);
+  }
 
-MatchOpcode *m_opcode(LowLevelOpcode ll_opcode, int size, char name) {
-  return new MatchOpcodeRange(ll_opcode, size, name);
-}
+  MatchOpcode *m_opcode_alu_l(char name)
+  {
+    return new MatchAluOpcode(name, 4);
+  }
 
-// Match an exact opcode, where we won't need to refer to it again
-MatchOpcode *m_opcode(LowLevelOpcode ll_opcode) {
-  return new MatchOpcodeRange(ll_opcode, 1, DONT_CARE);
-}
+  MatchOpcode *m_opcode_alu_q(char name)
+  {
+    return new MatchAluOpcode(name, 8);
+  }
 
-/*
-MatchOpcode *m_opcode(char name) {
-  return new MatchPreviousOpcode(name);
-}
-*/
+  MatchOpcode *m_opcode_alu_l_comm(char name)
+  {
+    return new MatchAluOpcode(name, 4, true);
+  }
 
-MatchOpcode *m_opcode_alu_l(char name) {
-  return new MatchAluOpcode(name, 4);
-}
+  MatchOpcode *m_opcode_alu_q_comm(char name)
+  {
+    return new MatchAluOpcode(name, 8, true);
+  }
 
-MatchOpcode *m_opcode_alu_q(char name) {
-  return new MatchAluOpcode(name, 8);
-}
+  MatchOperand *m_mreg(char name)
+  {
+    return new MatchMreg(name);
+  }
 
-MatchOpcode *m_opcode_alu_l_comm(char name) {
-  return new MatchAluOpcode(name, 4, true);
-}
+  MatchOperand *m_mregflex(char name)
+  {
+    return new MatchMregFlex(name);
+  }
 
-MatchOpcode *m_opcode_alu_q_comm(char name) {
-  return new MatchAluOpcode(name, 8, true);
-}
+  MatchOperand *m_imm(long imm_ival)
+  {
+    return new MatchSpecificImmediate(imm_ival);
+  }
 
-MatchOperand *m_mreg(char name) {
-  return new MatchMreg(name);
-}
+  MatchOperand *m_imm_any(char name)
+  {
+    return new MatchImmediate(name);
+  }
 
-MatchOperand *m_imm(long imm_ival) {
-  return new MatchSpecificImmediate(imm_ival);
-}
+  MatchOperand *m_mreg_mem(char name)
+  {
+    return new MatchMreg(name, true);
+  }
 
-MatchOperand *m_imm_any(char name) {
-  return new MatchImmediate(name);
-}
+  MatchOperand *m_any(char name)
+  {
+    return new MatchAny(name);
+  }
 
-MatchOperand *m_mreg_mem(char name) {
-  return new MatchMreg(name, true);
-}
+  MatchOperand *m_label(char name)
+  {
+    return new MatchAny(name, Operand::LABEL);
+  }
 
-MatchOperand *m_any(char name) {
-  return new MatchAny(name);
-}
+  InstructionMatcher *matcher(MatchOpcode *match_opcode,
+                              std::initializer_list<MatchOperand *> match_operands)
+  {
+    return new InstructionMatcher(match_opcode, match_operands);
+  }
 
-MatchOperand *m_label(char name) {
-  return new MatchAny(name, Operand::LABEL);
-}
+  GenerateOpcode *g_opcode(char name)
+  {
+    return new GenerateMatchedOpcode(name);
+  }
 
-InstructionMatcher *matcher(MatchOpcode *match_opcode,
-                            std::initializer_list<MatchOperand *> match_operands) {
-  return new InstructionMatcher(match_opcode, match_operands);
-}
+  GenerateOpcode *g_opcode(LowLevelOpcode opcode)
+  {
+    return new GenerateSpecificOpcode(opcode);
+  }
 
-GenerateOpcode *g_opcode(char name) {
-  return new GenerateMatchedOpcode(name);
-}
+  GenerateOpcode *g_opcode(LowLevelOpcode opcode, LowLevelOpcode prev_opcode, char size)
+  {
+    return new GenerateNonSpecificOpcode(opcode, prev_opcode, size);
+  }
 
-GenerateOpcode *g_opcode(LowLevelOpcode opcode) {
-  return new GenerateSpecificOpcode(opcode);
-}
+  GenerateOpcode *g_opcode_j_from_set(char name)
+  {
+    return new GenerateConditionalJumpFromSet(name);
+  }
 
-GenerateOpcode *g_opcode_j_from_set(char name) {
-  return new GenerateConditionalJumpFromSet(name);
-}
+  GenerateOperand *g_prev(char name)
+  {
+    return new GenerateMatchedOperand(name);
+  }
 
-GenerateOperand *g_prev(char name) {
-  return new GenerateMatchedOperand(name);
-}
+  GenerateOperand *g_prev(char name, int size)
+  {
+    return new GenerateMatchedOperand(name, size);
+  }
 
-GenerateOperand *g_mreg_mem_idx(char base_name, char index_name, int scale) {
-  return new GenerateIndexedMemref(base_name, index_name, scale);
-}
+  GenerateOperand *g_mreg_mem_idx(char base_name, char index_name, int scale)
+  {
+    return new GenerateIndexedMemref(base_name, index_name, scale);
+  }
 
-GenerateOperand *g_mreg_mem_off(char base_name, char off_name) {
-  return new GenerateOffsetMemref(base_name, off_name);
-}
+  GenerateOperand *g_mreg_mem_off(char base_name, char off_name)
+  {
+    return new GenerateOffsetMemref(base_name, off_name);
+  }
 
-InstructionTemplate *gen(GenerateOpcode *opcode_gen,
-                         std::initializer_list<GenerateOperand *> operand_gens) {
-  return new InstructionTemplate(opcode_gen, operand_gens);
-}
+  GenerateOperand *g_mreg_mem(char base_name)
+  {
+    return new GenerateMemref(base_name);
+  }
 
-////////////////////////////////////////////////////////////////////////
-// Instantiated PeepholeMatchers
-////////////////////////////////////////////////////////////////////////
+  InstructionTemplate *gen(GenerateOpcode *opcode_gen,
+                           std::initializer_list<GenerateOperand *> operand_gens)
+  {
+    return new InstructionTemplate(opcode_gen, operand_gens);
+  }
+
+  ////////////////////////////////////////////////////////////////////////
+  // Instantiated PeepholeMatchers
+  ////////////////////////////////////////////////////////////////////////
 
 #define pm(args...) std::unique_ptr<PeepholeMatcher>(new PeepholeMatcher(args))
 
-std::unique_ptr<PeepholeMatcher> matchers[] = {
-  // Get rid of do-nothing 32-bit r/r moves
-  pm(
-    // match instruction
-    {
-      matcher( m_opcode(MINS_MOVL), { m_mreg(A), m_mreg(A) } ),
-    },
+  std::unique_ptr<PeepholeMatcher> matchers[] = {
+      // Get rid of do-nothing r/r moves
+      pm(
+          // match instruction
+          {
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg(A), m_mreg(A)}),
+          },
 
-    // rewrite
-    {
-    }
-  ),
+          // rewrite
+          {}),
 
-  // Get rid of do-nothing 64-bit r/r moves
-  pm(
-    // match instruction
-    {
-      matcher( m_opcode(MINS_MOVQ), { m_mreg(A), m_mreg(A) } ),
-    },
+      pm(
+          // match instruction
+          {
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg(A), m_mreg(B)}),
+              matcher(m_opcode(A), {m_mreg(B), m_mreg(A)}),
+          },
 
-    // rewrite
-    {
-    }
-  ),
+          // rewrite
+          {},
+          "B"),
 
-  // TODO: add your own peephole rewrite patterns!
-};
+      pm(
+          // match instruction
+          {
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg(A), m_mreg(B)}),
+              matcher(m_opcode(A), {m_mreg(B), m_mreg(C)}),
+          },
+
+          // rewrite
+          {
+              gen(g_opcode(A), {g_prev(A), g_prev(C)})
+
+          },
+          "B"),
+
+      pm(
+          // match instruction
+          {
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg(A), m_mreg(B)}),
+              matcher(m_opcode(A), {m_mreg(B), m_mreg(C)}),
+              matcher(m_opcode(A), {m_mreg(C), m_mreg(A)}),
+          },
+
+          // rewrite
+          {},
+          "BC"),
+
+      // optimize moving 0 to mreg
+      pm(
+          // match instruction
+          {
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_imm(0), m_mreg(A)}),
+          },
+
+          // rewrite
+          {
+              gen(g_opcode(MINS_XORB, MINS_MOVB, A), {g_prev(A), g_prev(A)}),
+          }),
+
+      pm(
+          // match instruction
+          {
+              matcher(m_opcode(MINS_MOVL), {m_mreg(A), m_mregflex(B)}),
+              matcher(m_opcode(MINS_MOVSLQ), {m_mregflex(B), m_mregflex(B)})},
+
+          // rewrite
+          {
+              gen(g_opcode(MINS_MOVSLQ), {g_prev(A), g_prev(B, Operand::MREG64)}),
+          }),
+
+      // redundant addition
+      pm(
+          {
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg(A), m_mreg(B)}),
+              matcher(m_opcode(MINS_ADDB, MINS_MOVB, A), {m_mreg(C), m_mreg(B)}),
+              matcher(m_opcode(A), {m_mreg(B), m_mreg(D)}),
+              matcher(m_opcode(A), {m_mreg(D), m_mreg(A)}),
+          },
+          {
+              gen(g_opcode(MINS_ADDB, MINS_MOVB, A), {g_prev(C), g_prev(A)}),
+          },
+          "BD"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg(A), m_mreg(B)}),
+              matcher(m_opcode(A), {m_mreg(D), m_mreg(A)}),
+              matcher(m_opcode(MINS_ADDB, MINS_MOVB, A), {m_mreg(B), m_mreg(A)}),
+          },
+          {
+              gen(g_opcode(MINS_ADDB, MINS_MOVB, A), {g_prev(D), g_prev(A)}),
+          },
+          "B"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg(A), m_mreg(B)}),
+              matcher(m_opcode(MINS_ADDB, 8, B), {m_mreg(C), m_mreg(B)}),
+              matcher(m_opcode(A), {m_mreg(B), m_mreg(A)}),
+          },
+          {
+              gen(g_opcode(B), {g_prev(C), g_prev(A)}),
+          },
+          "B"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg(A), m_mreg(B)}),
+              matcher(m_opcode(MINS_CMPB, MINS_MOVB, A), {m_any(C), m_mreg(B)}),
+          },
+          {
+              gen(g_opcode(MINS_CMPB, MINS_MOVB, A), {g_prev(C), g_prev(A)}),
+          },
+          "B"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg(A), m_mreg(B)}),
+              matcher(m_opcode(A), {m_mreg(C), m_mreg(D)}),
+              matcher(m_opcode(A), {m_mreg(B), m_mreg(E)}),
+              matcher(m_opcode(MINS_ADDB, MINS_MOVB, A), {m_mreg(D), m_mreg(E)}),
+          },
+          {
+              gen(g_opcode(A), {g_prev(A), g_prev(E)}),
+              gen(g_opcode(MINS_ADDB, MINS_MOVB, A), {g_prev(C), g_prev(E)}),
+          },
+          "BD"),
+      // increment by 1 optimize
+      pm(
+          {
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg(A), m_mreg(B)}),
+              matcher(m_opcode(MINS_ADDB, MINS_MOVB, A), {m_imm(1), m_mreg(B)}),
+              matcher(m_opcode(A), {m_mreg(B), m_mreg(C)}),
+              matcher(m_opcode(A), {m_mreg(C), m_mreg(A)}),
+          },
+          {
+              gen(g_opcode(MINS_INCB, MINS_MOVB, A), {g_prev(A)}),
+          },
+          "BC"),
+      // compare optimize
+      pm(
+          {
+              matcher(m_opcode(MINS_CMPL), {m_any(A), m_any(B)}),
+              matcher(m_opcode(MINS_SETL, 6, A), {m_mreg(C)}),
+              matcher(m_opcode(MINS_MOVZBL), {m_mreg(C), m_mreg(D)}),
+              matcher(m_opcode(MINS_MOVL), {m_mreg(D), m_mreg(E)}),
+              matcher(m_opcode(MINS_CMPL), {m_imm(0), m_mreg(E)}),
+              matcher(m_opcode(MINS_JNE), {m_label(F)}),
+
+          },
+          {
+              gen(g_opcode(MINS_CMPL), {g_prev(A), g_prev(B)}),
+              gen(g_opcode_j_from_set(A), {g_prev(F)}),
+          },
+          "CDE"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg(A), m_mreg(B)}),
+              matcher(m_opcode(MINS_CMPB, MINS_MOVB, A), {m_mreg(C), m_mreg(B)}),
+          },
+          {
+              gen(g_opcode(MINS_CMPB, MINS_MOVB, A), {g_prev(C), g_prev(A)}),
+          },
+          "B"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg(A), m_mreg(B)}),
+              matcher(m_opcode(MINS_ADDB, MINS_MOVB, A), {m_any(C), m_mreg(B)}),
+              matcher(m_opcode(A), {m_mreg(B), m_mreg(D)}),
+
+          },
+          {
+              gen(g_opcode(A), {g_prev(A), g_prev(D)}),
+              gen(g_opcode(MINS_ADDB, MINS_MOVB, A), {g_prev(C), g_prev(D)}),
+          },
+          "B"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_IMULQ), {m_imm(4), m_mreg(B)}),
+              matcher(m_opcode(MINS_ADDQ), {m_mreg(C), m_mreg(B)}),
+              matcher(m_opcode(MINS_MOVQ), {m_mreg(B), m_mreg(D)}),
+              matcher(m_opcode(MINS_MOVL), {m_mreg_mem(D), m_mreg(E)}),
+          },
+          {
+              gen(g_opcode(MINS_MOVL), {g_mreg_mem_idx(C, B, 4), g_prev(E)}),
+          },
+          "BD"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_IMULQ), {m_imm(4), m_mreg(B)}),
+              matcher(m_opcode(MINS_MOVQ), {m_mreg(B), m_mregflex(C)}),
+              matcher(m_opcode(MINS_MOVQ), {m_mreg(D), m_mreg(E)}),
+              matcher(m_opcode(MINS_ADDQ), {m_mregflex(C), m_mreg(E)}),
+              matcher(m_opcode(MINS_MOVL), {m_mreg_mem(E), m_mregflex(C)}),
+          },
+          {
+              gen(g_opcode(MINS_MOVL), {g_mreg_mem_idx(D, B, 4), g_prev(C, Operand::MREG32)}),
+          },
+          "BE"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_IMULQ), {m_imm(4), m_mreg(B)}),
+              matcher(m_opcode(MINS_MOVQ), {m_mreg(B), m_mreg(C)}),
+              matcher(m_opcode(MINS_MOVQ), {m_mreg(D), m_mreg(E)}),
+              matcher(m_opcode(MINS_ADDQ), {m_mreg(C), m_mreg(E)}),
+              matcher(m_opcode(MINS_MOVL), {m_mreg_mem(E), m_mregflex(F)}),
+          },
+          {
+              gen(g_opcode(MINS_MOVL), {g_mreg_mem_idx(D, B, 4), g_prev(F)}),
+          },
+          "BCE"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_MOVQ), {m_mreg(A), m_mreg(B)}),
+              matcher(m_opcode(MINS_ADDQ), {m_imm_any(C), m_mreg(B)}),
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_any(D), m_mreg_mem(B)}),
+          },
+          {
+              gen(g_opcode(A), {g_prev(D), g_mreg_mem_off(A, C)}),
+          },
+          "B"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_LEAQ), {m_any(A), m_mreg(B)}),
+              matcher(m_opcode(MINS_MOVQ), {m_mreg(B), m_mreg(C)}),
+          },
+          {
+              gen(g_opcode(MINS_LEAQ), {g_prev(A), g_prev(C)}),
+          },
+          "B"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_LEAQ), {m_any(A), m_mreg(B)}),
+              matcher(m_opcode(MINS_MOVQ), {m_mreg(B), m_mreg(C)}),
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_any(D), m_mreg_mem(C)}),
+              matcher(m_opcode(A), {m_mreg_mem(B), m_any(E)}),
+          },
+          {
+              gen(g_opcode(MINS_LEAQ), {g_prev(A), g_prev(C)}),
+              gen(g_opcode(A), {g_prev(D), g_mreg_mem(C)}),
+              gen(g_opcode(A), {g_mreg_mem(C), g_prev(E)}),
+          },
+          "B"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_IMULQ), {m_imm(8), m_mreg(A)}),
+              matcher(m_opcode(MINS_ADDQ), {m_mreg(B), m_mreg(A)}),
+              matcher(m_opcode(MINS_MOVQ), {m_mreg(A), m_mreg(C)}),
+          },
+          {
+              gen(g_opcode(MINS_LEAQ), {g_mreg_mem_idx(B, A, 8), g_prev(C)}),
+          },
+          "A"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_IMULQ), {m_imm(8), m_mreg(A)}),
+              matcher(m_opcode(MINS_ADDQ), {m_mreg(B), m_mreg(A)}),
+          },
+          {
+              gen(g_opcode(MINS_LEAQ), {g_mreg_mem_idx(B, A, 8), g_prev(A)}),
+          }),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_MOVQ), {m_mreg(A), m_mreg(B)}),
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg_mem(B), m_any(C)}),
+          },
+          {
+              gen(g_opcode(A), {g_mreg_mem(A), g_prev(C)}),
+          },
+          "B"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_IMULQ), {m_imm(4), m_mreg(A)}),
+              matcher(m_opcode(MINS_ADDQ), {m_mreg(B), m_mreg(A)}),
+              matcher(m_opcode(MINS_MOVQ), {m_mreg(A), m_mreg(C)}),
+          },
+          {
+              gen(g_opcode(MINS_LEAQ), {g_mreg_mem_idx(B, A, 4), g_prev(C)}),
+          },
+          "A"),
+
+      pm(
+          {matcher(m_opcode(MINS_IMULQ), {m_imm(4), m_mreg(A)}),
+           matcher(m_opcode(MINS_ADDQ), {m_mreg(B), m_mreg(A)})},
+          {
+              gen(g_opcode(MINS_LEAQ), {g_mreg_mem_idx(B, A, 4), g_prev(A)}),
+          }),
+
+      pm(
+          {matcher(m_opcode(MINS_LEAQ), {m_any(A), m_mreg(B)}),
+           matcher(m_opcode(MINS_MOVB, 4, A), {m_any(C), m_mreg_mem(B)})},
+          {
+              gen(g_opcode(A), {g_prev(C), g_prev(A)}),
+          },
+          "B"),
+
+      pm(
+          {matcher(m_opcode(MINS_LEAQ), {m_any(A), m_mreg(B)}),
+           matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg_mem(B), m_any(C)})},
+          {
+              gen(g_opcode(A), {g_prev(A), g_prev(C)}),
+          },
+          "B"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_LEAQ), {m_any(A), m_mreg(B)}),
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg_mem(B), m_mreg(B)}),
+              matcher(m_opcode(A), {m_mreg(B), m_mreg(C)}),
+          },
+          {
+              gen(g_opcode(A), {g_prev(A), g_prev(C)}),
+          },
+          "B"),
+
+      pm(
+          {
+              matcher(m_opcode(MINS_LEAQ), {m_any(A), m_mreg(B)}),
+              matcher(m_opcode(MINS_MOVB, 4, A), {m_mreg_mem(B), m_mreg(B)}),
+              matcher(m_opcode(A), {m_mreg(B), m_any(C)}),
+          },
+          {
+              gen(g_opcode(A), {g_prev(A), g_prev(B)}),
+              gen(g_opcode(A), {g_prev(B), g_prev(C)}),
+          })};
 
 #undef pm
 
-const unsigned NUM_MATCHERS = sizeof(matchers) / sizeof(matchers[0]);
-
+  const unsigned NUM_MATCHERS = sizeof(matchers) / sizeof(matchers[0]);
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -934,19 +1559,20 @@ const unsigned NUM_MATCHERS = sizeof(matchers) / sizeof(matchers[0]);
 ////////////////////////////////////////////////////////////////////////
 
 PeepholeLowLevel::PeepholeLowLevel(const std::shared_ptr<ControlFlowGraph> &cfg)
-  : ControlFlowGraphTransform(cfg)
-  , m_live_mregs(cfg)
-  , m_num_matched(0) {
+    : ControlFlowGraphTransform(cfg), m_live_mregs(cfg), m_num_matched(0)
+{
   // Compute liveness information about machine registers,
   // since this will be very important for determining which
   // transformations can be done safely
   m_live_mregs.execute();
 }
 
-PeepholeLowLevel::~PeepholeLowLevel() {
+PeepholeLowLevel::~PeepholeLowLevel()
+{
 }
 
-std::shared_ptr<InstructionSequence> PeepholeLowLevel::transform_basic_block(const InstructionSequence *orig_bb) {
+std::shared_ptr<InstructionSequence> PeepholeLowLevel::transform_basic_block(const InstructionSequence *orig_bb)
+{
   // Maximum number of instructions that are kept in the window
   const unsigned MAX_WINDOW_SIZE = 7;
 
@@ -960,24 +1586,29 @@ std::shared_ptr<InstructionSequence> PeepholeLowLevel::transform_basic_block(con
   //   - the window has at least one instruction in it, or
   //   - there are instructions in the basic block that haven't
   //     been added to the window yet
-  while (!m_window.empty() || i != orig_bb->cend()) {
+  while (!m_window.empty() || i != orig_bb->cend())
+  {
     // Try to keep the window full
-    while (i != orig_bb->cend() && m_window.size() < MAX_WINDOW_SIZE) {
+    while (i != orig_bb->cend() && m_window.size() < MAX_WINDOW_SIZE)
+    {
       m_window.push_back(*i);
       ++i;
     }
 
     // Try to match a pattern
     bool found_match = false;
-    for (unsigned j = 0; j < NUM_MATCHERS; ++j) {
-      if (matchers[j]->match(m_window, result_iseq, m_live_mregs, bb)) {
+    for (unsigned j = 0; j < NUM_MATCHERS; ++j)
+    {
+      if (matchers[j]->match(m_window, result_iseq, m_live_mregs, bb))
+      {
         found_match = true;
         ++m_num_matched;
         break;
       }
     }
 
-    if (!found_match) {
+    if (!found_match)
+    {
       // None of the patterns matched, so emit the earliest instruction
       emit_earliest_in_window(result_iseq);
     }
@@ -989,7 +1620,8 @@ std::shared_ptr<InstructionSequence> PeepholeLowLevel::transform_basic_block(con
   return result_iseq;
 }
 
-void PeepholeLowLevel::emit_earliest_in_window(const std::shared_ptr<InstructionSequence> &result_iseq) {
+void PeepholeLowLevel::emit_earliest_in_window(const std::shared_ptr<InstructionSequence> &result_iseq)
+{
   const Instruction *earliest = m_window.front();
   result_iseq->append(earliest->duplicate());
   m_window.pop_front();

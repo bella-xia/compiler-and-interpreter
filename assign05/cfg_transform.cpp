@@ -222,14 +222,6 @@ std::shared_ptr<InstructionSequence> LocalOptimizationHighLevel::transform_basic
           m_is_modified = true;
           dest = dest_orig;
         }
-        /*
-        if (dest.get_kind() == Operand::VREG_MEM && m_vreg_vals.find(Operand(Operand::VREG, dest.get_base_reg())) != m_vreg_vals.end())
-        {
-          dest = Operand(Operand::VREG_MEM, std::get<0>(m_vreg_vals[Operand(Operand::VREG, dest.get_base_reg())]).get_base_reg());
-          m_is_modified = true;
-          // std::cout << "optimization by removing uncessary virtual register for deference is still live" << std::endl;
-        }
-        */
         // iterate over all the remaining source operands
         for (int i = 1; i < (int)hl_ins->get_num_operands(); ++i)
         {
@@ -237,22 +229,6 @@ std::shared_ptr<InstructionSequence> LocalOptimizationHighLevel::transform_basic
           // virtual register or virtual register dereferenced
           Operand orig_op = hl_ins->get_operand(i);
           new_ops.push_back(get_orig_operand(orig_op, m_vreg_vals, false));
-          /*
-          if (orig_op.get_kind() == Operand::VREG && m_vreg_vals.find(orig_op) != m_vreg_vals.end())
-          {
-            new_ops.push_back(std::get<0>(m_vreg_vals.find(orig_op)->second));
-          }
-          else if (orig_op.get_kind() == Operand::VREG_MEM && m_vreg_vals.find(Operand(Operand::VREG, orig_op.get_base_reg())) != m_vreg_vals.end())
-          {
-            new_ops.push_back(Operand(Operand::VREG_MEM, std::get<0>((m_vreg_vals[Operand(Operand::VREG, orig_op.get_base_reg())])).get_base_reg()));
-          }
-          else
-          {
-            // if no optimization can be performend, rertain
-            // the original operand
-            new_ops.push_back(orig_op);
-          }
-                  */
         }
 
         // check if there is redundant move
@@ -263,10 +239,9 @@ std::shared_ptr<InstructionSequence> LocalOptimizationHighLevel::transform_basic
         if (!redundant)
         {
           // otherwise, append the instruction to the optimized sequence of instructions
-          return_hl_iseq->append(
-              ((int)new_ops.size() == 1)
-                  ? new Instruction(hl_ins->get_opcode(), dest, new_ops.at(0))
-                  : new Instruction(hl_ins->get_opcode(), dest, new_ops.at(0), new_ops.at(1)));
+          return_hl_iseq->append(((int)new_ops.size() == 1)
+                                     ? new Instruction(hl_ins->get_opcode(), dest, new_ops.at(0))
+                                     : new Instruction(hl_ins->get_opcode(), dest, new_ops.at(0), new_ops.at(1)));
         }
       }
     }
@@ -339,20 +314,9 @@ void LocalOptimizationHighLevel::localaddr_optimize(Instruction *hl_ins, bool &o
     {
       erase_relevant_info(hl_ins, m_vreg_vals, m_vreg_memoffs, m_vreg_ops, return_hl_iseq);
       deleted = true;
-      // // std::cout << "refering to vr" << key << std::endl;
-      /*
-      if (m_vreg_vals.find(dest) != m_vreg_vals.end())
-      {
-        m_vreg_vals[dest] = std::make_tuple(key, 8);
-      }
-      else
-      {
-        */
       m_vreg_vals.insert(std::pair(dest, std::make_tuple(key, 8)));
-      //}
       opt = true;
       m_is_modified = true;
-      // std::cout << "no need to move localaddr bc another virtual register stores the offset needed is still alive" << std::endl;
     }
     else
     {
@@ -360,20 +324,7 @@ void LocalOptimizationHighLevel::localaddr_optimize(Instruction *hl_ins, bool &o
       // future reference
       erase_relevant_info(hl_ins, m_vreg_vals, m_vreg_memoffs, m_vreg_ops, return_hl_iseq);
       deleted = true;
-      /*
-      if (m_vreg_vals.find(dest) != m_vreg_vals.end())
-      {
-        m_vreg_vals.erase(dest);
-      }
-      if (m_vreg_memoffs.find(dest) != m_vreg_memoffs.end())
-      {
-        m_vreg_memoffs[dest] = offset;
-      }
-      else
-      {
-        */
       m_vreg_memoffs.insert(std::pair<Operand, int>(dest, offset));
-      //}
     }
   }
 }
@@ -443,26 +394,16 @@ void LocalOptimizationHighLevel::compare_optimize(Instruction *hl_ins, bool &opt
       return_hl_iseq->append(new Instruction(new_opcode, dest, Operand(Operand::IMM_IVAL, result)));
       opt = true;
       m_is_modified = true;
-      // std::cout << "move the result into a dereferenced regester instead of using conditional operation is still alive " << std::endl;
     }
     else if (dest.get_kind() == Operand::VREG)
     {
       // otherwise if it is a virtual register, can just store the value somewhere
       erase_relevant_info(hl_ins, m_vreg_vals, m_vreg_memoffs, m_vreg_ops, return_hl_iseq);
       deleted = true;
-      /*
-      if (m_vreg_vals.find(dest) != m_vreg_vals.end())
-      {
-        m_vreg_vals[dest] = std::make_tuple(Operand(Operand::IMM_IVAL, result), 4);
-      }
-      else
-      {
-        */
       m_vreg_vals.insert(std::pair(dest, std::make_tuple(Operand(Operand::IMM_IVAL, result), 4)));
       //}
       opt = true;
       m_is_modified = true;
-      // std::cout << "storing result into a virtual register mapping instead of using conditional operation is still alive " << std::endl;
     }
   }
   else if (dest.get_kind() == Operand::VREG &&
@@ -471,24 +412,6 @@ void LocalOptimizationHighLevel::compare_optimize(Instruction *hl_ins, bool &opt
   {
     src1 = get_orig_operand(src1, m_vreg_vals, true);
     src2 = get_orig_operand(src2, m_vreg_vals, true);
-    /*
-    while (src1.get_kind() == Operand::VREG &&
-           m_vreg_vals.find(src1) != m_vreg_vals.end())
-    {
-      src1 = std::get<0>(m_vreg_vals[src1]);
-    }
-    while (src1.get_kind() == Operand::VREG_MEM && m_vreg_vals.find(Operand(Operand::VREG, src1.get_base_reg())) != m_vreg_vals.end())
-    {
-      src1 = Operand(Operand::VREG_MEM, std::get<0>(m_vreg_vals[src1]).get_base_reg());
-    }
-    while ((src2.get_kind() == Operand::VREG || src2.get_kind() == Operand::VREG_MEM) &&
-           m_vreg_vals.find(src2) != m_vreg_vals.end())
-    {
-      src2 = (src2.get_kind() == Operand::VREG)
-                 ? std::get<0>(m_vreg_vals[src2])
-                 : Operand(Operand::VREG_MEM, std::get<0>(m_vreg_vals[src2]).get_base_reg());
-    }
-    */
     Operand get_op = find_operation(static_cast<HighLevelOpcode>(hl_opcode), src1, src2, m_vreg_ops);
     if (get_op == dest)
     {
@@ -500,19 +423,9 @@ void LocalOptimizationHighLevel::compare_optimize(Instruction *hl_ins, bool &opt
     {
       erase_relevant_info(hl_ins, m_vreg_vals, m_vreg_memoffs, m_vreg_ops, return_hl_iseq);
       deleted = true;
-      /*
-      if (m_vreg_vals.find(dest) != m_vreg_vals.end())
-      {
-        m_vreg_vals[dest] = std::make_tuple(get_op, src_size);
-      }
-      else
-      {
-        */
       m_vreg_vals.insert(std::pair(dest, std::make_tuple(get_op, src_size)));
-      // }
       opt = true;
       m_is_modified = true;
-      // std::cout << "replace condition operation with variable still active" << std::endl;
     }
     else
     {
@@ -564,19 +477,10 @@ void LocalOptimizationHighLevel::uscon_optimize(Instruction *hl_ins, bool &opt, 
   {
     erase_relevant_info(hl_ins, m_vreg_vals, m_vreg_memoffs, m_vreg_ops, return_hl_iseq);
     deleted = true;
-    /*
-    if (m_vreg_vals.find(dest) != m_vreg_vals.end())
-    {
-      m_vreg_vals[dest] = std::make_tuple(Operand(src), dest_size);
-    }
-    else
-    {
-      */
     m_vreg_vals.insert(std::pair(dest, std::make_tuple(Operand(src), dest_size)));
     //}
     opt = true;
     m_is_modified = true;
-    // // // std::cout << "optimization by storing the value instead of explicitly upscaling it" << std::endl;
   }
 }
 
@@ -618,58 +522,13 @@ void LocalOptimizationHighLevel::operation_optimize(Instruction *hl_ins, bool &o
                  src2.get_imm_ival() == 1;
   if (add_zero || minus_zero || mult_one || div_one)
   {
-    /*
-    std::string src1_str = "";
-    std::string src2_str = "";
-    if (src1.get_kind() == Operand::VREG)
-    {
-      src1_str = "vr " + std::to_string(src1.get_base_reg());
-    }
-    else if (src1.get_kind() == Operand::VREG_MEM)
-    {
-      src1_str = "vr mem ref " + std::to_string(src1.get_base_reg());
-    }
-    else if (src1.get_kind() == Operand::IMM_IVAL)
-    {
-      src1_str = std::to_string(src1.get_imm_ival());
-    }
-    if (src2.get_kind() == Operand::VREG)
-    {
-      src2_str = "vr " + std::to_string(src2.get_base_reg());
-    }
-    else if (src2.get_kind() == Operand::VREG_MEM)
-    {
-      src2_str = "vr mem ref " + std::to_string(src2.get_base_reg());
-    }
-    else if (src2.get_kind() == Operand::IMM_IVAL)
-    {
-      src2_str = std::to_string(src2.get_imm_ival());
-    }
-    */
     Operand identifier = (src1.get_kind() == Operand::VREG) ? Operand(src1) : Operand(src2);
     identifier = get_orig_operand(identifier, m_vreg_vals, true);
-    /*
-    while (identifier.get_kind() == Operand::VREG &&
-           m_vreg_vals.find(identifier) != m_vreg_vals.end())
-    {
-      identifier = std::get<0>(m_vreg_vals[identifier]);
-    }
-    */
     erase_relevant_info(hl_ins, m_vreg_vals, m_vreg_memoffs, m_vreg_ops, return_hl_iseq);
     deleted = true;
-    /*
-    if (m_vreg_vals.find(dest) != m_vreg_vals.end())
-    {
-      m_vreg_vals[dest] = std::make_tuple(identifier, src_size);
-    }
-    else
-    {
-      */
     m_vreg_vals.insert(std::pair(dest, std::make_tuple(identifier, src_size)));
-    // }
     opt = true;
     m_is_modified = true;
-    // std::cout << "removing non-necessary operations still active" << std::endl;
   }
   else if (dest.get_kind() == Operand::VREG &&
            src1.get_kind() == Operand::IMM_IVAL &&
@@ -684,27 +543,22 @@ void LocalOptimizationHighLevel::operation_optimize(Instruction *hl_ins, bool &o
     case 0:
       // add operation
       result = src1_val + src2_val;
-      // std::cout << "add " << src1_val << " and " << src2_val << std::endl;
       break;
     case 1:
       // minus operation
       result = src1_val - src2_val;
-      // Wstd::cout << "minus " << src1_val << " and " << src2_val << std::endl;
       break;
     case 2:
       // times operation
       result = src1_val * src2_val;
-      // Wstd::cout << "multiply " << src1_val << " and " << src2_val << std::endl;
       break;
     case 3:
       // divide operation
       result = src1_val / src2_val;
-      // std::cout << "divide " << src1_val << " and " << src2_val << std::endl;
       break;
     case 4:
       // mod operation
       result = src1_val % src2_val;
-      // std::cout << "mod " << src1_val << " and " << src2_val << std::endl;
       break;
     default:
       break;
@@ -713,7 +567,6 @@ void LocalOptimizationHighLevel::operation_optimize(Instruction *hl_ins, bool &o
     return_hl_iseq->append(new Instruction(new_opcode, dest, Operand(Operand::IMM_IVAL, result)));
     opt = true;
     m_is_modified = true;
-    // std::cout << "converting constant calculations to mov instruction still active" << std::endl;
   }
   else if (dest.get_kind() == Operand::VREG &&
            (src1.get_kind() == Operand::VREG || src1.get_kind() == Operand::VREG_MEM || src1.get_kind() == Operand::IMM_IVAL) &&
@@ -721,51 +574,6 @@ void LocalOptimizationHighLevel::operation_optimize(Instruction *hl_ins, bool &o
   {
     src1 = get_orig_operand(src1, m_vreg_vals, true);
     src2 = get_orig_operand(src2, m_vreg_vals, true);
-    // case of operations that can be stored and referenced in the future
-    /*
-    while ((src1.get_kind() == Operand::VREG || src1.get_kind() == Operand::VREG_MEM) &&
-           m_vreg_vals.find(src1) != m_vreg_vals.end())
-    {
-      src1 = (src1.get_kind() == Operand::VREG)
-                 ? std::get<0>(m_vreg_vals[src1])
-                 : Operand(Operand::VREG_MEM, std::get<0>(m_vreg_vals[src1]).get_base_reg());
-    }
-    while ((src2.get_kind() == Operand::VREG || src2.get_kind() == Operand::VREG_MEM) &&
-           m_vreg_vals.find(src2) != m_vreg_vals.end())
-    {
-      src2 = (src2.get_kind() == Operand::VREG)
-                 ? std::get<0>(m_vreg_vals[src2])
-                 : Operand(Operand::VREG_MEM, std::get<0>(m_vreg_vals[src2]).get_base_reg());
-    }
-    */
-    /*
-    std::string src1_str = "";
-    std::string src2_str = "";
-    if (src1.get_kind() == Operand::VREG)
-    {
-      src1_str = "vr " + std::to_string(src1.get_base_reg());
-    }
-    else if (src1.get_kind() == Operand::VREG_MEM)
-    {
-      src1_str = "vr mem ref " + std::to_string(src1.get_base_reg());
-    }
-    else if (src1.get_kind() == Operand::IMM_IVAL)
-    {
-      src1_str = std::to_string(src1.get_imm_ival());
-    }
-    if (src2.get_kind() == Operand::VREG)
-    {
-      src2_str = "vr " + std::to_string(src2.get_base_reg());
-    }
-    else if (src2.get_kind() == Operand::VREG_MEM)
-    {
-      src2_str = "vr mem ref " + std::to_string(src2.get_base_reg());
-    }
-    else if (src2.get_kind() == Operand::IMM_IVAL)
-    {
-      src2_str = std::to_string(src2.get_imm_ival());
-    }
-    */
     Operand get_op = find_operation(static_cast<HighLevelOpcode>(hl_opcode), src1, src2, m_vreg_ops);
     if (get_op == dest)
     {
@@ -777,27 +585,12 @@ void LocalOptimizationHighLevel::operation_optimize(Instruction *hl_ins, bool &o
     {
       erase_relevant_info(hl_ins, m_vreg_vals, m_vreg_memoffs, m_vreg_ops, return_hl_iseq);
       deleted = true;
-      /*
-      if (m_vreg_vals.find(dest) != m_vreg_vals.end())
-      {
-        m_vreg_vals[dest] = std::make_tuple(get_op, src_size);
-      }
-      else
-      {
-        */
       m_vreg_vals.insert(std::pair(dest, std::make_tuple(get_op, src_size)));
-      //}
       opt = true;
       m_is_modified = true;
-      // std::cout << "replace operation with variable still active" << std::endl;
     }
     else
     {
-      /*
-      if (src1.get_kind() == Operand::NONE || src2.get_kind() == Operand::NONE)
-      {
-        // std::cout << hl_opcode << ", " << src1_str << ", " << src2_str << std::endl;
-      }*/
       erase_relevant_info(hl_ins, m_vreg_vals, m_vreg_memoffs, m_vreg_ops, return_hl_iseq);
       deleted = true;
       m_vreg_ops.insert(std::pair(std::make_tuple(static_cast<HighLevelOpcode>(hl_opcode), src1, src2),
@@ -827,20 +620,11 @@ void LocalOptimizationHighLevel::move_optimize(Instruction *hl_ins, bool &opt, b
   // until needed
   if (dest.get_kind() == Operand::VREG)
   {
-    // std::cout << "got here with vr" << dest.get_base_reg() << std::endl;
     if (dest.get_base_reg() >= 10 && src.get_kind() >= 10 &&
         (src.get_kind() == Operand::IMM_IVAL || src.get_kind() == Operand::VREG))
     {
-      // std::cout << "got here with vr" << dest.get_base_reg() << std::endl;
       Operand identifier = Operand(src);
       identifier = get_orig_operand(identifier, m_vreg_vals, true);
-      /*
-      while (identifier.get_kind() == Operand::VREG &&
-             m_vreg_vals.find(identifier) != m_vreg_vals.end())
-      {
-        identifier = std::get<0>(m_vreg_vals[identifier]);
-      }
-      */
       if (identifier == dest)
       {
         deleted = true;
@@ -851,16 +635,7 @@ void LocalOptimizationHighLevel::move_optimize(Instruction *hl_ins, bool &opt, b
       {
         erase_relevant_info(hl_ins, m_vreg_vals, m_vreg_memoffs, m_vreg_ops, return_hl_iseq);
         deleted = true;
-        /*
-        if (m_vreg_vals.find(dest) != m_vreg_vals.end())
-        {
-          m_vreg_vals[dest] = std::make_tuple(identifier, src_size);
-        }
-        else
-        {
-          */
         m_vreg_vals.insert(std::pair(dest, std::make_tuple(identifier, src_size)));
-        //}
         opt = true;
         m_is_modified = true;
       }
@@ -879,12 +654,6 @@ void LocalOptimizationHighLevel::neg_optimize(Instruction *hl_ins, bool &opt, bo
   Operand src = hl_ins->get_operand(1);
   int src_size = get_src_size(hl_opcode - HINS_neg_b);
   src = get_orig_operand(src, m_vreg_vals, true);
-  /*
-  while (src.get_kind() == Operand::VREG && m_vreg_vals.find(src) != m_vreg_vals.end())
-  {
-    src = std::get<0>(m_vreg_vals[src]);
-  }
-  */
   if (dest.get_kind() == Operand::VREG && src.get_kind() == Operand::IMM_IVAL)
   {
     m_vreg_vals.insert(std::pair(dest, std::make_tuple(
@@ -953,10 +722,6 @@ void LocalOptimizationHighLevel::erase_relevant_operations(Operand dest, std::ma
   }
   for (std::tuple<HighLevelOpcode, Operand, Operand> key : items_to_delete)
   {
-    if (std::get<1>(key).get_kind() == Operand::NONE || std::get<2>(key).get_kind() == Operand::NONE)
-    {
-      // std::cout << std::get<0>(key) << std::endl;
-    }
     m_vreg_ops.erase(key);
   }
 }
@@ -965,15 +730,6 @@ std::vector<Operand> LocalOptimizationHighLevel::erase_relevant_values(Instructi
                                                                        std::shared_ptr<InstructionSequence> return_hl_iseq,
                                                                        std::map<Operand, std::tuple<Operand, int>> &m_vreg_vals)
 {
-
-  if (dest.get_kind() == Operand::VREG)
-  {
-    // std::cout << "deleting relevant operations to vreg" << dest.get_base_reg() << std::endl;
-  }
-  else if (dest.get_kind() == Operand::VREG_MEM)
-  {
-    // std::cout << "deleting relevant operations to vreg mem ref" << dest.get_base_reg() << std::endl;
-  }
   std::vector<Operand> items_to_delete_after_instruction;
   std::vector<Operand> items_to_delete;
   LiveVregsAnalysis::FactType before_liveness = m_live_vreg.get_fact_before_instruction(m_cur_block, hl_ins);
@@ -989,7 +745,6 @@ std::vector<Operand> LocalOptimizationHighLevel::erase_relevant_values(Instructi
       if ((map_src.get_kind() != Operand::NONE && map_src == dest) &&
           !after_liveness.test(ele.first.get_base_reg()) && before_liveness.test(ele.first.get_base_reg()))
       {
-        // // std::cout << "still using vr" << ele.first << " after this instruction" << std::endl;
         items_to_delete_after_instruction.push_back(map_dest);
       }
       else
@@ -999,7 +754,6 @@ std::vector<Operand> LocalOptimizationHighLevel::erase_relevant_values(Instructi
         if ((map_src.get_kind() != Operand::NONE && map_src == dest) &&
             after_liveness.test(ele.first.get_base_reg()))
         {
-          // // std::cout << "still using vr" << ele.first << " after this instruction" << std::endl;
           HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, src_size);
           return_hl_iseq->append(new Instruction(mov_opcode, map_dest, map_src));
           items_to_delete.push_back(ele.first);
@@ -1025,31 +779,17 @@ void LocalOptimizationHighLevel::erase_relevant_info(Instruction *hl_ins,
   // then remove it
   if (m_vreg_memoffs.find(dest) != m_vreg_memoffs.end())
   {
-    // std::cout << " m_vreg_memoffs erased vr" << dest.get_base_reg() << std::endl;
     m_vreg_memoffs.erase(dest);
   }
   if (dest.get_kind() == Operand::VREG)
   {
-    // std::cout << "erasing vr " << dest.get_base_reg() << std::endl;
     erase_relevant_operations(dest, m_vreg_ops);
-    // erase_relevant_values(hl_ins, dest, return_hl_iseq, m_vreg_vals);
   }
   // if a value is assigned to the dereferenced format,
   // then change any reference to its dereferenced value
   if (dest.get_kind() == Operand::VREG_MEM)
   {
-    // erase_relevant_operations(dest, m_vreg_ops);
     Operand identifier = get_orig_operand(dest, m_vreg_vals, false);
-    /*
-    if (m_vreg_vals.find(Operand(Operand::VREG, identifier.get_base_reg())) != m_vreg_vals.end())
-    {
-      std::cout << "got here with (vr " << dest.get_base_reg() << ")" << std::endl;
-      Operand target = std::get<0>(m_vreg_vals[Operand(Operand::VREG, identifier.get_base_reg())]);
-      std::string object_str = (target.is_imm_ival()) ? std::to_string(target.get_imm_ival()) : "vr" + std::to_string(target.get_base_reg());
-      std::cout << "vreg mem vr" << identifier.get_base_reg() << "gets " << object_str << std::endl;
-      identifier = Operand(Operand::VREG_MEM, target.get_base_reg());
-    }
-    */
     erase_relevant_operations(identifier, m_vreg_ops);
   }
 }
@@ -1094,18 +834,12 @@ void LocalOptimizationHighLevel::check_end_of_block(LiveVregsAnalysis::FactType 
   for (std::pair<Operand, std::tuple<Operand, int>> ele : m_vreg_vals)
   {
     Operand dest_vreg = ele.first;
-    // std::cout << "checking ending vreg " << dest_vreg << std::endl;
     if (end_of_block_facts.test(dest_vreg.get_base_reg()))
     {
       Operand src = std::get<0>(ele.second);
       int src_size = std::get<1>(ele.second);
-      // // std::cout << "checking needed " << dest_vreg << " of size " << src_size << std::endl;
       HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, src_size);
       return_hl_iseq->append(new Instruction(mov_opcode, dest_vreg, src));
-    }
-    else
-    {
-      // std::cout << "checking not needed " << dest_vreg << std::endl;
     }
   }
   m_vreg_vals.clear();
@@ -1235,7 +969,6 @@ std::shared_ptr<InstructionSequence> LocalMregAssignmentHighLevel::transform_bas
   std::vector<std::string> available_mregs;
   std::vector<std::string> restore_until_next_call;
   std::map<int, int> stored_before_call;
-  // bool last_call;
   for (std::string mreg : m_available_mregs)
   {
     available_mregs.push_back(mreg);
@@ -1340,8 +1073,15 @@ std::shared_ptr<InstructionSequence> LocalMregAssignmentHighLevel::transform_bas
       return_hl_iseq->append(new Instruction(hl_opcode));
       break;
     case 1:
-      return_hl_iseq->append(new Instruction(hl_opcode, modified_operands.at(0)));
+    {
+      Instruction *instr = new Instruction(hl_opcode, modified_operands.at(0));
+      if (hl_ins->get_opcode() == HINS_call)
+      {
+        instr->set_symbol(hl_ins->get_symbol());
+      }
+      return_hl_iseq->append(instr);
       break;
+    }
     case 2:
       return_hl_iseq->append(new Instruction(hl_opcode, modified_operands.at(0), modified_operands.at(1)));
       break;
@@ -1350,13 +1090,11 @@ std::shared_ptr<InstructionSequence> LocalMregAssignmentHighLevel::transform_bas
                                              modified_operands.at(2)));
       break;
     default:
-      // std::cout << "more operand than maximum for one instruction" << std::endl;
       assert(false);
     }
 
     if (hl_opcode == HINS_call)
     {
-      // std::cout << "restoring " << restore_until_next_call.size() << " vregs" << std::endl;
       for (std::string mreg_reserved : restore_until_next_call)
       {
         if (std::find(available_mregs.begin(), available_mregs.end(), mreg_reserved) == available_mregs.end())
@@ -1376,7 +1114,6 @@ std::shared_ptr<InstructionSequence> LocalMregAssignmentHighLevel::transform_bas
       if (!instruction_after_liveness.test(vreg_num))
       {
         available_mregs.push_back(corr_mreg);
-        // pairings.erase(it.first);
         mregs_to_delete.push_back(vreg_num);
       }
     }

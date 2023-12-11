@@ -31,6 +31,7 @@
 #include "parser_state.h"
 #include "semantic_analysis.h"
 #include "symtab.h"
+#include "peephole_ll.h"
 #include "highlevel_codegen.h"
 #include "local_storage_allocation.h"
 #include "lowlevel_codegen.h"
@@ -299,6 +300,23 @@ namespace
     // translate high-level code to low-level code
     std::shared_ptr<InstructionSequence> ll_iseq = ll_codegen.generate(iseq);
 
+    LowLevelControlFlowGraphBuilder ll_cfg_builder(ll_iseq);
+    std::shared_ptr<ControlFlowGraph> ll_cfg = ll_cfg_builder.build();
+
+    if (m_optimize)
+    {
+      bool done = false;
+      while (!done)
+      {
+        PeepholeLowLevel peephole_ll(ll_cfg);
+        ll_cfg = peephole_ll.transform_cfg();
+        // ll_iseq = ll_cfg->create_instruction_sequence();
+        // m_delegate->collect_function(name, ll_iseq);
+        if (peephole_ll.get_num_matched() == 0)
+          done = true;
+      }
+      ll_iseq = ll_cfg->create_instruction_sequence();
+    }
     // send the low-level code on to the delegate (i.e., print the code)
     m_delegate->collect_function(name, ll_iseq);
   }

@@ -15,7 +15,7 @@ SRCS = node.cpp node_base.cpp location.cpp treeprint.cpp \
 	yyerror.cpp exceptions.cpp cpputil.cpp lowlevel_defuse.cpp  \
 	$(GENERATED_SRCS)
 # For Assignment 5, peephole_ll.cpp could be useful
-#SRCS += peephole_ll.cpp
+SRCS += peephole_ll.cpp debugvar.cpp
 OBJS = $(SRCS:%.cpp=%.o)
 
 PARSER_SRC = parse_buildast.y

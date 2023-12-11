@@ -424,7 +424,6 @@ void HighLevelCodegen::visit_function_call_expression(Node *n)
       if ((*i)->get_type()->is_array())
       {
         std::shared_ptr<Type> check_type = std::shared_ptr<Type>(new PointerType((*i)->get_type()->get_base_type()));
-        // std::shared_ptr<Type> original_type((*i)->get_type());
         std::shared_ptr<Type> dest_type((*i)->get_function_type());
         Operand orig_operand(Operand(Operand::VREG, (*i)->get_operand().get_base_reg()));
         Operand modified_op(check_types(orig_operand, check_type, dest_type));
@@ -445,14 +444,13 @@ void HighLevelCodegen::visit_function_call_expression(Node *n)
       start_arg_vreg++;
     }
   }
-  m_hl_iseq->append(new Instruction(HINS_call, Operand(Operand::LABEL, funcall_name->get_str())));
+  Instruction *funcall_instr = new Instruction(HINS_call, Operand(Operand::LABEL, funcall_name->get_str()));
+  funcall_instr->set_symbol(funcall_name->get_symbol());
+  m_hl_iseq->append(funcall_instr);
   HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, n->get_type());
   Operand dest(Operand::VREG, next_temp_vreg());
   m_hl_iseq->append(new Instruction(mov_opcode, dest, Operand(Operand::VREG, 0)));
   n->set_operand(dest);
-  // visit_children(n);
-
-  // TODO: implement
 }
 
 void HighLevelCodegen::visit_field_ref_expression(Node *n)
@@ -461,7 +459,6 @@ void HighLevelCodegen::visit_field_ref_expression(Node *n)
   Node *struct_var = n->get_kid(0);
   visit(struct_var);
   Operand struct_var_opt = struct_var->get_operand();
-
   // get struct component
   std::string struct_component_name = n->get_kid(1)->get_str();
   int component_offset = struct_var->get_type()->get_field_offset(struct_component_name);
@@ -480,7 +477,6 @@ void HighLevelCodegen::visit_field_ref_expression(Node *n)
   m_hl_iseq->append(new Instruction(add_opcode, dest2, struct_op,
                                     dest1));
   n->set_operand(dest2.to_memref());
-  // TODO: implement
 }
 
 void HighLevelCodegen::visit_indirect_field_ref_expression(Node *n)
@@ -488,7 +484,6 @@ void HighLevelCodegen::visit_indirect_field_ref_expression(Node *n)
   Node *struct_var = n->get_kid(0);
   visit(struct_var);
   Operand struct_var_ptr_opt = struct_var->get_operand();
-
   // get struct component
   std::string struct_component_name = n->get_kid(1)->get_str();
   int component_offset = struct_var->get_type()->get_base_type()->get_field_offset(struct_component_name);
@@ -510,14 +505,11 @@ void HighLevelCodegen::visit_array_element_ref_expression(Node *n)
   Node *arr = n->get_kid(0);
   int size = arr->get_type()->get_base_type()->get_storage_size();
   Node *idx = n->get_kid(1);
-
   // now since we are understanding index as addition to pointer, we will
   // reset idx's type
   std::shared_ptr<Type> idx_type(new PointerType(
       (std::shared_ptr<Type>(new BasicType(BasicTypeKind::INT, true)))));
-
   // if the current idx is lower than this, then upgrade idx
-
   Operand idx_operand = idx->get_operand();
   Operand idx_moderated = check_types(idx_operand, idx->get_type(), idx_type);
   Operand dest1(Operand::VREG, next_temp_vreg());
@@ -533,11 +525,7 @@ void HighLevelCodegen::visit_array_element_ref_expression(Node *n)
   }
   m_hl_iseq->append(new Instruction(add_opcode, dest2, arr_op,
                                     dest1));
-  // Operand dest3(Operand::VREG, next_temp_vreg());
-  // HighLevelOpcode mov_opcode = get_opcode(HINS_mov_b, n->get_type());
-  // m_hl_iseq->append(new Instruction(mov_opcode, dest3, dest2.to_memref()));
   n->set_operand(dest2.to_memref());
-  // TODO: implement
 }
 
 void HighLevelCodegen::visit_variable_ref(Node *n)
@@ -561,15 +549,11 @@ void HighLevelCodegen::visit_variable_ref(Node *n)
     localaddr_instru->set_symbol(ref_symbol);
     m_hl_iseq->append(localaddr_instru);
     n->set_operand(mem_ref.to_memref());
-    // do later
   }
-  // TODO: implement
 }
 
 void HighLevelCodegen::visit_literal_value(Node *n)
 {
-  // A partial implementation (note that this won't work correctly
-  // for string constants!):
   visit_children(n);
 
   LiteralValue val = n->get_literal_value();
@@ -599,7 +583,6 @@ void HighLevelCodegen::visit_literal_value(Node *n)
 void HighLevelCodegen::visit_implicit_conversion(Node *n)
 {
   visit_children(n);
-  // TODO: implement
 }
 
 void HighLevelCodegen::visit_assign_operation(Node *n)
