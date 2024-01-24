@@ -12,5 +12,8 @@ In the cfg_transform.cpp, I implemented two optimization helper classes:
             with a machine register
 
 In peephole_ll.cpp, implemented one peephole optimization with a number of matches, each
-corresponding to an instance of optimizable block
+corresponding to an instance of optimizable block.
+
+I also modified context.cpp, highlevel_codegen.cpp, lowlevel_codegen.cpp and 
+local_storage_allocation.cpp to support the optimization process.
 
